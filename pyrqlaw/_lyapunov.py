@@ -9,8 +9,12 @@ import numpy.linalg as la
 
 def lyapunov_control_angles(
         fun_lyapunov_control,
+        fun_eval_fdot, 
+        fun_eval_gdot, 
+        fun_eval_dfdoe, 
+        fun_eval_dgdoe,
         mu, 
-        f, 
+        accel, 
         oe, 
         oeT, 
         rpmin, m_petro, n_petro, 
@@ -22,8 +26,12 @@ def lyapunov_control_angles(
     
     Args:
         fun_lyapunov_control (callable): symbolic-generated Lyapunov control law
+        fun_eval_fdot (callable): symbolic-generated f_dot_x
+        fun_eval_gdot (callable): symbolic-generated g_dot_x
+        fun_eval_dfdoe (callable): symbolic-generated partial derivatives of f_dot_x wrt oe
+        fun_eval_dgdoe (callable): symbolic-generated partial derivatives of f_dot_x wrt oe 
         mu (float): gravitational parameter
-        f (float): thrust-acceleration
+        accel (float): thrust-acceleration
         oe (np.array): current osculating elements
         oeT (np.array): target osculating elements
         rpmin (float): minimum periapsis
@@ -37,16 +45,37 @@ def lyapunov_control_angles(
     Returns:
         (tuple): alpha, beta, vector u, list of columns of psi
     """
-    # compute u direction
+    l_range = np.linspace(0,2*np.pi,num=100,endpoint=False)
+    oe_5 = oe[:5] # a, f, g, h, k
+
+    # evaluate the max and maximizer of fdot_x for L in [0,2pi)
+    fdot_x = np.array([fun_eval_fdot(mu, accel, np.concatenate((oe_5,[l]))) for l in l_range])
+    fdot_xx = np.max(fdot_x)
+    l_max_f = l_range[np.argmax(fdot_x)]
+
+    # evaluate the max and maximizer of gdot_x for L in [0,2pi)
+    gdot_x = np.array([fun_eval_gdot(mu, accel, np.concatenate((oe_5,[l]))) for l in l_range])
+    gdot_xx = np.max(gdot_x)
+    l_max_g = l_range[np.argmax(gdot_x)]
+
+    # compute dfdoe_max, dgdoe_max
+    dfdoe_max = fun_eval_dfdoe(mu, accel, np.concatenate((oe_5,[l_max_f])))
+    dgdoe_max = fun_eval_dgdoe(mu, accel, np.concatenate((oe_5,[l_max_g])))
+
+    # compute D1, D2, D3
     d_raw, psi = fun_lyapunov_control(
         mu, 
-        f, 
+        accel, 
         oe, 
         oeT, 
         rpmin, m_petro, n_petro, 
-        r_petro, k_petro, 
+        r_petro, k_petro,  
         wp, 
-        woe
+        woe,
+        fdot_xx, 
+        gdot_xx, 
+        dfdoe_max, 
+        dgdoe_max
     )
 
     # compute thrust angles

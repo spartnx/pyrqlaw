@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate
 
-from ._symbolic import symbolic_rqlaw_mee_with_a
+from ._symbolic import symbolic_rqlaw_mee_with_a, symbolic_rqlaw_mee_with_a_improved
 from ._lyapunov import lyapunov_control_angles
 from ._integrate import eom_mee_with_a_gauss, rk4, rkf45, dopri5
 from ._convergence import check_convergence, elements_safety
@@ -67,8 +67,8 @@ class RQLaw:
         oe_max=None, # -> add value for true longitude
         nan_angles_threshold=10,
         print_frequency=200,
-        abs_tol=1e-10,
-        rel_tol=1e-10,
+        abs_tol=1e-7,
+        rel_tol=1e-9,
     ):
         """Construct RQLaw object"""
         # dynamics
@@ -116,8 +116,13 @@ class RQLaw:
         # construct element names
         self.element_names = ["a", "f", "g", "h", "k", "L"]
         self.eom = eom_mee_with_a_gauss
-        fun_lyapunov_control, _, _ = symbolic_rqlaw_mee_with_a()
+        fun_lyapunov_control, _, _, fun_eval_fdot, fun_eval_gdot, fun_eval_dfdoe, fun_eval_dgdoe = symbolic_rqlaw_mee_with_a_improved()
+        # fun_lyapunov_control, _, _ = symbolic_rqlaw_mee_with_a()
         self.lyap_fun = fun_lyapunov_control
+        self.eval_fdot = fun_eval_fdot
+        self.eval_gdot = fun_eval_gdot
+        self.eval_dfdoe = fun_eval_dfdoe
+        self.eval_dgdoe = fun_eval_dgdoe
 
         # max and min step sizes used with adaptive step integrators -> check how dopri does that; might need different parameters for dopri and rkf45
         self.step_min = 1e-4
@@ -228,8 +233,12 @@ class RQLaw:
             # evaluate Lyapunov function
             alpha, beta, d, psi = lyapunov_control_angles(
                 fun_lyapunov_control=self.lyap_fun,
+                fun_eval_fdot=self.eval_fdot, 
+                fun_eval_gdot=self.eval_gdot, 
+                fun_eval_dfdoe=self.eval_dfdoe, 
+                fun_eval_dgdoe=self.eval_dgdoe,
                 mu=self.mu, 
-                f=accel_thrust, 
+                accel=accel_thrust, 
                 oe=oe_iter, 
                 oeT=self.oeT, 
                 rpmin=self.rpmin, 
@@ -391,8 +400,12 @@ class RQLaw:
             # evaluate Lyapunov function
             alpha, beta, d_test, _ = lyapunov_control_angles(
                 fun_lyapunov_control=self.lyap_fun,
+                fun_eval_fdot=self.eval_fdot, 
+                fun_eval_gdot=self.eval_gdot, 
+                fun_eval_dfdoe=self.eval_dfdoe, 
+                fun_eval_dgdoe=self.eval_dgdoe,
                 mu=self.mu, 
-                f=accel_thrust, 
+                accel=accel_thrust, 
                 oe=oe_test, 
                 oeT=self.oeT, # -> RQ-law oeT must have true longitude as its 6th component 
                 rpmin=self.rpmin, 
