@@ -60,8 +60,8 @@ l_mesh = 20
 
 # RQ-Law parameters: Stage 1 (orbital transfer - matching chaser's and target's orbits)
 k_petro_1 = 100 # Penalty function parameter
-wp_1 = 1 # Penalty function weight
-woe_1 = [2, 50, 50, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
+wp1 = 1 # Penalty function weight
+woe1 = [2, 50, 50, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
 m_petro_1 = 3 # For weight function associated with sma
 n_petro_1 = 4 # For weight function associated with sma
 r_petro_1 = 2 # For weight function associated with sma
@@ -74,8 +74,8 @@ woe_2 = [10, 1, 1, 1, 1] # Lyapunov function weights, in terms of MEE with sma (
 m_petro_2 = 3 # For weight function associated with sma
 n_petro_2 = 4 # For weight function associated with sma
 r_petro_2 = 2 # For weight function associated with sma
-wl_2 = 0 # amplitude weight in augmented target sma - automatically set to 0 in stage 1
-wscl_2 = 0 # frequency weight in augmented target sma - automatically set to 0 in stage 1
+wl2 = 0.06609 # amplitude weight in augmented target sma - automatically set to 0 in stage 1
+wscl2 = 3.3697 # frequency weight in augmented target sma - automatically set to 0 in stage 1
 #########################
 
 
@@ -109,12 +109,12 @@ prob = pyrqlaw.RQLaw(mu=mu,
                      m_petro=m_petro_1, # -> add Qtol for Stage 1 convergence check
                      n_petro=n_petro_1,
                      r_petro=r_petro_1, 
-                     wp=wp_1,
-                     wl=wl_2,
-                     wscl=wscl_2,
+                     wp=wp1,
+                     wl=wl2,
+                     wscl=wscl2,
                      l_mesh=l_mesh,
                     )
-prob.set_problem(oe0, oeT, mass0, thrust, mdot, tf_max, t_step, woe=woe_1)
+prob.set_problem(oe0, oeT, mass0, thrust, mdot, tf_max, t_step, woe=woe1)
 prob.pretty_settings()
 prob.pretty()
 
