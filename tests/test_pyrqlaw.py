@@ -7,6 +7,7 @@ sys.path.append("../")
 import pyrqlaw
 
 start = time.time()
+
 #########################
 ######  CONSTANTS  ######
 #########################
@@ -31,18 +32,18 @@ ecc_C = 0.2 # eccentricity - can't be 0 nor 1 due to singularities in the RQ-Law
 inc_C = 0 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
 raan_C = 0 # RAAN, rad
 aop_C = 0 # argument of periapse, rad
-ta_C = 0 # true anomaly, rad
+ta_C = np.pi # true anomaly, rad
 
 # Target's initial state (Keplerian elements)
 sma_T = DU + 3e6 # semi-major axis, m
-ecc_T = 1e-3 # eccentricity - can't be 0 nor 1 due to singularities in RQ-Law
-inc_T = np.pi/2 # inclination, rad - can't be pi due to singularities in RQ-Law
+ecc_T = 1e-3 # eccentricity - can't be 0 nor 1 due to singularities in the RQ-Law formulation
+inc_T = np.pi/2 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
 raan_T = np.pi/2 # RAAN, rad
 aop_T = np.pi/2 # argument of periapse, rad
 ta_T = np.pi/2 # true anomaly, rad
 
 # spacecraft parameters
-mass0 = 450.0 # chaser's initial mass, kg
+mass0 = 450 # chaser's initial mass, kg
 isp = 3300 # engine specific impulse, s
 eta = 0.65 # engine efficiency
 power = 5000 # engine power, W
@@ -50,33 +51,31 @@ thrust = 2*eta*power/(g0*isp) # thrust, N
 mdot = thrust/(g0*isp) # mass flow rate, kg/s
 
 # Integration parameters
-tf_max = 300 * (24*3600) # max time of flight, s
+tf_max = 350 * (24*3600) # max time of flight, s
 t_step = 1 # integration step, s
 
-# RQ-Law parameters: Stage 1 (orbital transfer)
-k_petro_1 = 100
-rpmin_1 = DU
-wp_1 = 1
-woe_1 = [2, 50, 50, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
-m_petro_1 = 3
-n_petro_1 = 4
-r_petro_1 = 2
-
-# RQ-Law parameters: Stage 2 (phasing)
-k_petro_2 = 100
-rpmin_2 = DU
-wp_2 = 1
-woe_2 = [10, 1, 1, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
-m_petro_2 = 3
-n_petro_2 = 4
-r_petro_2 = 2
-l_tol = 3e-3 # error tolerance on true longitude, rad
-wl = 0 # set 0 in stage 1 (automatically done)
-wscl = 0 # set 0 in stage 1 (automatically done)
-
-# Other parameters
+# RQ-Law parameters common to both stages
+rpmin = DU
 l_mesh = 20
-eta_r = 0
+
+# RQ-Law parameters: Stage 1 (orbital transfer - matching chaser's and target's orbits)
+k_petro_1 = 100 # Penalty function parameter
+wp_1 = 1 # Penalty function weight
+woe_1 = [2, 50, 50, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
+m_petro_1 = 3 # For weight function associated with sma
+n_petro_1 = 4 # For weight function associated with sma
+r_petro_1 = 2 # For weight function associated with sma
+eta_r_1 = 0 # Relative effectivity threshold - automatically set to 0 in stage 2
+
+# RQ-Law parameters: Stage 2 (phasing - matching chaser's and target's positions)
+k_petro_2 = 100 # Penalty function parameter
+wp_2 = 1 # Penalty function weight
+woe_2 = [10, 1, 1, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
+m_petro_2 = 3 # For weight function associated with sma
+n_petro_2 = 4 # For weight function associated with sma
+r_petro_2 = 2 # For weight function associated with sma
+wl_2 = 0 # amplitude weight in augmented target sma - automatically set to 0 in stage 1
+wscl_2 = 0 # frequency weight in augmented target sma - automatically set to 0 in stage 1
 #########################
 
 
@@ -86,8 +85,7 @@ eta_r = 0
 # Standardization
 sma_C /= DU
 sma_T /= DU
-rpmin_1 /= DU
-rpmin_2 /= DU
+rpmin /= DU
 tf_max /= TU
 t_step /= TU
 thrust /= (mass0*DU/TU**2)
@@ -106,14 +104,14 @@ oeT = pyrqlaw.kep2mee_with_a(np.array([sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T]
 #############################
 # Construct the problem object -> this only solves Stage 1 for now...
 prob = pyrqlaw.RQLaw(mu=mu,
-                     rpmin=rpmin_1, 
+                     rpmin=rpmin, 
                      k_petro=k_petro_1, # -> add inputs for Stage 2
                      m_petro=m_petro_1, # -> add Qtol for Stage 1 convergence check
                      n_petro=n_petro_1,
                      r_petro=r_petro_1, 
                      wp=wp_1,
-                     wl=wl,
-                     wscl=wscl,
+                     wl=wl_2,
+                     wscl=wscl_2,
                      l_mesh=l_mesh,
                     )
 prob.set_problem(oe0, oeT, mass0, thrust, mdot, tf_max, t_step, woe=woe_1)
@@ -121,7 +119,7 @@ prob.pretty_settings()
 prob.pretty()
 
 # Solve the problem
-prob.solve(eta_r=eta_r)
+prob.solve(eta_r=eta_r_1)
 prob.pretty_results() 
 
 # Plots
@@ -129,10 +127,11 @@ fig1, ax1 = prob.plot_elements_history(to_keplerian=True,
                                        time_scale=TU/(24*3600), distance_scale=DU/1000, 
                                        time_unit="days", distance_unit="km")
 fig2, ax2 = prob.plot_trajectory_3d(sphere_radius=Re/DU)
-fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600))
+fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days")
 plt.show()
 #############################
 
 # -> get output data such as final mass and convert back into input units
 
-print(time.time() - start)
+run_time = time.time() - start
+print("\nRuntime: " + str(round(run_time,2)) + " sec")
