@@ -1,10 +1,12 @@
 import numpy as np
 import sys
 import matplotlib.pyplot as plt
+import time
 
 sys.path.append("../")
 import pyrqlaw
 
+start = time.time()
 #########################
 ######  CONSTANTS  ######
 #########################
@@ -25,8 +27,8 @@ VU = DU/TU # speed along an orbit of radius DU, m/s
 ######################
 # Chaser's initial state (Keplerian elements)
 sma_C = DU + 2e6 # semi-major axis, m
-ecc_C = 0.2 # eccentricity - can't be 0 nor 1 due to singularities in RQ-Law
-inc_C = 0 # inclination, rad - can't be pi due to singularities in RQ-Law
+ecc_C = 0.2 # eccentricity - can't be 0 nor 1 due to singularities in the RQ-Law formulation
+inc_C = 0 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
 raan_C = 0 # RAAN, rad
 aop_C = 0 # argument of periapse, rad
 ta_C = 0 # true anomaly, rad
@@ -69,8 +71,12 @@ m_petro_2 = 3
 n_petro_2 = 4
 r_petro_2 = 2
 l_tol = 3e-3 # error tolerance on true longitude, rad
-wl = 0.06609 # set 0 in stage 1 (automatically done)
-wscl = 3.3697 # set 0 in stage 1 (automatically done)
+wl = 0 # set 0 in stage 1 (automatically done)
+wscl = 0 # set 0 in stage 1 (automatically done)
+
+# Other parameters
+l_mesh = 20
+eta_r = 0
 #########################
 
 
@@ -91,7 +97,7 @@ mu = 1
 
 # Convert keplerian elements into Modified Equinoctial Elements with sma
 oe0 = pyrqlaw.kep2mee_with_a(np.array([sma_C, ecc_C, inc_C, raan_C, aop_C, ta_C]))
-oeT = pyrqlaw.kep2mee_with_a(np.array([sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T]))[:5] # -> remove [:5] once stage 2 is implemented
+oeT = pyrqlaw.kep2mee_with_a(np.array([sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T])) 
 #################################
 
 
@@ -106,13 +112,16 @@ prob = pyrqlaw.RQLaw(mu=mu,
                      n_petro=n_petro_1,
                      r_petro=r_petro_1, 
                      wp=wp_1,
+                     wl=wl,
+                     wscl=wscl,
+                     l_mesh=l_mesh,
                     )
 prob.set_problem(oe0, oeT, mass0, thrust, mdot, tf_max, t_step, woe=woe_1)
 prob.pretty_settings()
 prob.pretty()
 
 # Solve the problem
-prob.solve()
+prob.solve(eta_r=eta_r)
 prob.pretty_results() 
 
 # Plots
@@ -120,8 +129,10 @@ fig1, ax1 = prob.plot_elements_history(to_keplerian=True,
                                        time_scale=TU/(24*3600), distance_scale=DU/1000, 
                                        time_unit="days", distance_unit="km")
 fig2, ax2 = prob.plot_trajectory_3d(sphere_radius=Re/DU)
-fig3, ax3 = prob.plot_controls()
+fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600))
 plt.show()
 #############################
 
 # -> get output data such as final mass and convert back into input units
+
+print(time.time() - start)
