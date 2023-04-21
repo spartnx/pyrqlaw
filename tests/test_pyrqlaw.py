@@ -51,29 +51,30 @@ thrust = 2*eta*power/(g0*isp) # thrust, N
 mdot = thrust/(g0*isp) # mass flow rate, kg/s
 
 # Integration parameters
-tf_max = 350 * (24*3600) # max time of flight, s
-t_step = 1 # integration step, s
+tf_max = 600 * (24*3600) # max time of flight, s
+t_step = 0.1 # integration step, non-dimensional
 
 # RQ-Law parameters common to both stages
 rpmin = DU
-l_mesh = 20
+l_mesh = 100
+t_mesh = 5
 
 # RQ-Law parameters: Stage 1 (orbital transfer - matching chaser's and target's orbits)
 k_petro_1 = 100 # Penalty function parameter
 wp1 = 1 # Penalty function weight
 woe1 = [2, 50, 50, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
-m_petro_1 = 3 # For weight function associated with sma
-n_petro_1 = 4 # For weight function associated with sma
-r_petro_1 = 2 # For weight function associated with sma
+m_petro_1 = 3 # For weight function Sa associated with sma
+n_petro_1 = 4 # For weight function Sa associated with sma
+r_petro_1 = 2 # For weight function Sa associated with sma
 eta_r_1 = 0 # Relative effectivity threshold - automatically set to 0 in stage 2
 
 # RQ-Law parameters: Stage 2 (phasing - matching chaser's and target's positions)
 k_petro_2 = 100 # Penalty function parameter
 wp_2 = 1 # Penalty function weight
 woe_2 = [10, 1, 1, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
-m_petro_2 = 3 # For weight function associated with sma
-n_petro_2 = 4 # For weight function associated with sma
-r_petro_2 = 2 # For weight function associated with sma
+m_petro_2 = 3 # For weight function Sa associated with sma
+n_petro_2 = 4 # For weight function Sa associated with sma
+r_petro_2 = 2 # For weight function Sa associated with sma
 wl2 = 0.06609 # amplitude weight in augmented target sma - automatically set to 0 in stage 1
 wscl2 = 3.3697 # frequency weight in augmented target sma - automatically set to 0 in stage 1
 #########################
@@ -87,7 +88,6 @@ sma_C /= DU
 sma_T /= DU
 rpmin /= DU
 tf_max /= TU
-t_step /= TU
 thrust /= (mass0*DU/TU**2)
 mdot /= (mass0/TU)
 mass0 = 1
@@ -106,21 +106,24 @@ oeT = pyrqlaw.kep2mee_with_a(np.array([sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T]
 prob = pyrqlaw.RQLaw(mu=mu,
                      rpmin=rpmin, 
                      k_petro=k_petro_1, # -> add inputs for Stage 2
-                     m_petro=m_petro_1, # -> add Qtol for Stage 1 convergence check
+                     m_petro=m_petro_1,
                      n_petro=n_petro_1,
                      r_petro=r_petro_1, 
                      wp=wp1,
                      wl=wl2,
                      wscl=wscl2,
                      l_mesh=l_mesh,
+                     t_mesh=t_mesh,
                     )
 prob.set_problem(oe0, oeT, mass0, thrust, mdot, tf_max, t_step, woe=woe1)
 prob.pretty_settings()
 prob.pretty()
 
 # Solve the problem
-prob.solve(eta_r=eta_r_1)
+prob.solve_stage1(eta_r=eta_r_1)
 prob.pretty_results() 
+run_time = time.time() - start
+print("\nRuntime: " + str(round(run_time,2)) + " sec")
 
 # Plots
 fig1, ax1 = prob.plot_elements_history(to_keplerian=True, 
@@ -133,5 +136,3 @@ plt.show()
 
 # -> get output data such as final mass and convert back into input units
 
-run_time = time.time() - start
-print("\nRuntime: " + str(round(run_time,2)) + " sec")
