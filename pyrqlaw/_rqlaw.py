@@ -2,6 +2,7 @@
 main functions for Q-Law transfers
 """
 
+import copy
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate
@@ -374,10 +375,10 @@ class RQLaw:
             idx += 1
 
         # Storage over full timeline (stage 1 and stage 2)
-        self.states = self.states1
-        self.statesT = self.statesT1
-        self.times = self.times1
-        self.controls = self.controls1
+        self.states = copy.deepcopy(self.states1)
+        self.statesT = copy.deepcopy(self.statesT1)
+        self.times = copy.deepcopy(self.times1)
+        self.controls = copy.deepcopy(self.controls1)
 
         if self.converge == False:
             if self.verbosity > 0:
@@ -490,10 +491,10 @@ class RQLaw:
 
         # initialize storage
         n_nan_angles = 0
-        self.states2 = []
-        self.statesT2 = []
-        self.times2 = []
-        self.controls2 = []
+        self.states2 = [oe_iter,]
+        self.statesT2 = [oeT_iter,]
+        self.times2 = [t_iter,]
+        self.controls2 = [self.controls[-1],]
 
         if self.verbosity >= 2:
             header = " iter   |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |  el6        |"
