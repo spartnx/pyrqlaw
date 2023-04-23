@@ -236,11 +236,11 @@ class RQLaw:
         mass_iter = self.mass0
 
         # initialize storage
-        self.times = [t_iter,]
-        self.states = [oe_iter,]
-        self.statesT = [oeT_iter,]
+        self.times1 = [t_iter,]
+        self.states1 = [oe_iter,]
+        self.statesT1 = [oeT_iter,]
         self.masses = [mass_iter,]
-        self.controls = []
+        self.controls1 = []
         n_nan_angles = 0
 
         if self.verbosity >= 2:
@@ -248,8 +248,8 @@ class RQLaw:
     
         # iterate until tf_max
         idx = 0
-        while self.times[-1] < self.tf_max:
-            print(round(self.times[-1]/self.tf_max*100,2))
+        while t_iter < self.tf_max:
+            print("Stage 1 : " + str(round(t_iter/self.tf_max*100,2)))
 
             # ensure numerical stabilty
             oe_iter = elements_safety(oe_iter, self.oe_min, self.oe_max)
@@ -339,9 +339,9 @@ class RQLaw:
             t_iter += self.t_step  # update time
             mass_iter -= self.mdot*self.t_step*throttle
             self.t_step = max(self.step_min, min(self.step_max,h_next))
-            print("l = " + str(oe_iter[5]))
-            print("lT = " + str(oeT_iter[5]))
-            print("deltaL = " + str(self.eval_deltaL(oe_iter[5], oeT_iter[5])))
+            # print("l = " + str(oe_iter[5]))
+            # print("lT = " + str(oeT_iter[5]))
+            # print("deltaL = " + str(self.eval_deltaL(oe_iter[5], oeT_iter[5])))
                 
             # check convergence
             if check_convergence(oe_iter, oeT_iter, self.woe1, self.wl1, self.tol_oe) == True:
@@ -364,14 +364,20 @@ class RQLaw:
                 break
 
             # store
-            self.times.append(t_iter)
-            self.states.append(oe_iter) 
-            self.statesT.append(oeT_iter)
+            self.times1.append(t_iter)
+            self.states1.append(oe_iter) 
+            self.statesT1.append(oeT_iter)
             self.masses.append(mass_iter)
-            self.controls.append([alpha, beta, throttle])
+            self.controls1.append([alpha, beta, throttle])
 
             # index update
             idx += 1
+
+        # Storage over full timeline (stage 1 and stage 2)
+        self.states = self.states1
+        self.statesT = self.statesT1
+        self.times = self.times1
+        self.controls = self.controls1
 
         if self.converge == False:
             if self.verbosity > 0:
@@ -474,22 +480,28 @@ class RQLaw:
         """
         assert self.ready == True, "Please first call `set_problem()`"
 
+        self.converge = False
+
         # initialize values for propagation
-        t_iter = self.times[-1]
-        oe_iter = self.states[-1]
-        oeT_iter = self.statesT[-1]
+        t_iter = self.times1[-1]
+        oe_iter = self.states1[-1]
+        oeT_iter = self.statesT1[-1]
         mass_iter = self.masses[-1]
 
         # initialize storage
         n_nan_angles = 0
+        self.states2 = []
+        self.statesT2 = []
+        self.times2 = []
+        self.controls2 = []
 
         if self.verbosity >= 2:
             header = " iter   |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |  el6        |"
     
         # iterate until tf_max
         idx = 0
-        while self.times[-1] < self.tf_max:
-            print(round(self.times[-1]/self.tf_max*100,2))
+        while t_iter < self.tf_max:
+            print("Stage 2 : " + str(round(t_iter/self.tf_max*100,2)))
 
             # ensure numerical stabilty
             oe_iter = elements_safety(oe_iter, self.oe_min, self.oe_max)
@@ -559,7 +571,7 @@ class RQLaw:
             self.t_step = max(self.step_min, min(self.step_max,h_next))
                 
             # check convergence
-            if check_convergence(oe_iter, oeT_iter, self.woe2, self.wl2, self.tol_oe) == True:
+            if check_convergence(oe_iter, oeT_iter, self.woe2, self.wl2, self.tol_oe, deltaL=deltaL) == True:
                 self.exitcode = 1
                 self.converge = True
                 break
@@ -579,14 +591,20 @@ class RQLaw:
                 break
 
             # store
-            self.times.append(t_iter)
-            self.states.append(oe_iter) 
-            self.statesT.append(oeT_iter)
+            self.times2.append(t_iter)
+            self.states2.append(oe_iter) 
+            self.statesT2.append(oeT_iter)
             self.masses.append(mass_iter)
-            self.controls.append([alpha, beta, throttle])
+            self.controls2.append([alpha, beta, throttle])
 
             # index update
             idx += 1
+
+        # Update storage over full timeline (stage 1 and stage 2)
+        self.states += self.states2
+        self.statesT += self.statesT2
+        self.times += self.times2
+        self.controls += self.controls2
 
         if self.converge == False:
             if self.verbosity > 0:
@@ -608,9 +626,18 @@ class RQLaw:
     def plot_elements_history(self, figsize=(6,4), to_keplerian=False, 
                                     time_scale=1, distance_scale=1, 
                                     time_unit=None, distance_unit=None,
-                                    degrees=True):
+                                    degrees=True, to_plot=0):
         """Plot elements time history"""
-        times = np.array(self.times) * time_scale
+        assert to_plot in [0,1,2], "to_plot must be 0, 1, or 2"
+        if to_plot == 0:
+            states = self.states
+            times = np.array(self.times) * time_scale
+        elif to_plot == 1:
+            states = self.states1
+            times = np.array(self.times1) * time_scale
+        else: 
+            states = self.states2
+            times = np.array(self.times2) * time_scale
         oes = np.zeros((6,len(times)))
         if to_keplerian:
             labels = ["a", "e", "i", "raan", "om", "ta"]
@@ -630,12 +657,12 @@ class RQLaw:
         
         for idx in range(len(times)):
             if to_keplerian:
-                oes[:,idx] = mee_with_a2kep(self.states[idx])
+                oes[:,idx] = mee_with_a2kep(states[idx])
                 oes[0,idx] *= distance_scale
                 if degrees:
                     oes[2:6,idx] = np.degrees(oes[2:6,idx])
             else:
-                oes[:,idx] = self.states[idx]
+                oes[:,idx] = states[idx]
                 
         fig, axs = plt.subplots(3,2,figsize=figsize)
         i = 0
@@ -650,14 +677,23 @@ class RQLaw:
         return fig, axs
 
 
-    def plot_controls(self, time_scale, time_unit=None, figsize=(9,6)):
+    def plot_controls(self, time_scale, time_unit=None, figsize=(9,6), to_plot=0):
         """Plot control time history"""
-        times = np.array(self.times)[0:-1] * time_scale
+        assert to_plot in [0,1,2], "to_plot must be 0, 1, or 2"
+        if to_plot == 0:
+            controls = self.controls
+            times = np.array(self.times)[0:-1] * time_scale
+        elif to_plot == 1:
+            controls = self.controls1
+            times = np.array(self.times1)[0:-1] * time_scale
+        else: 
+            controls = self.controls2
+            times = np.array(self.times2) * time_scale
         alphas, betas, throttles = [], [], []
-        for control in self.controls:
-            alphas.append(control[0])
-            betas.append(control[1])
-            throttles.append(control[2])
+        for ctl in controls:
+            alphas.append(ctl[0])
+            betas.append(ctl[1])
+            throttles.append(ctl[2])
         time_label = "Time"
         if time_unit != None:
             time_label += " ["+time_unit+"]"
@@ -671,37 +707,37 @@ class RQLaw:
         return fig, axs
 
 
-    def interpolate_states(self):
+    def interpolate_states(self, states, times):
         """Create interpolation states"""
         # prepare states matrix
-        state_matrix = np.zeros((6,len(self.states)))
-        for idx,state in enumerate(self.states):
+        state_matrix = np.zeros((6,len(states)))
+        for idx,state in enumerate(states):
             state_matrix[:,idx] = state
-        f_a = interpolate.interp1d(self.times, state_matrix[0,:])
-        f_f = interpolate.interp1d(self.times, state_matrix[1,:])
-        f_g = interpolate.interp1d(self.times, state_matrix[2,:])
-        f_h = interpolate.interp1d(self.times, state_matrix[3,:])
-        f_k = interpolate.interp1d(self.times, state_matrix[4,:])
-        f_l = interpolate.interp1d(self.times, state_matrix[5,:])
+        f_a = interpolate.interp1d(times, state_matrix[0,:])
+        f_f = interpolate.interp1d(times, state_matrix[1,:])
+        f_g = interpolate.interp1d(times, state_matrix[2,:])
+        f_h = interpolate.interp1d(times, state_matrix[3,:])
+        f_k = interpolate.interp1d(times, state_matrix[4,:])
+        f_l = interpolate.interp1d(times, state_matrix[5,:])
         return (f_a, f_f, f_g, f_h, f_k, f_l)
 
 
-    def get_cartesian_history(self, interpolate=True, steps=None):
+    def get_cartesian_history(self, states, times, interpolate=True, steps=None):
         """Get Cartesian history of states"""
         if interpolate:
             # interpolate orbital elements
-            f_a, f_f, f_g, f_h, f_k, f_l = self.interpolate_states()
+            f_a, f_f, f_g, f_h, f_k, f_l = self.interpolate_states(states, times)
             if steps is None:
-                steps = min(8000, int(round(self.times[-1]/0.1))) # -> why divide by 0.1
+                steps = min(8000, int(round(times[-1]/0.1))) # -> why divide by 0.1
                 print(f"Using {steps} steps for evaluation")
-            t_evals = np.linspace(self.times[0], self.times[-1], steps)
+            t_evals = np.linspace(times[0], times[-1], steps)
             cart = np.zeros((6,steps))
             for idx, t in enumerate(t_evals):
                 cart[:,idx] = mee_with_a2sv([f_a(t), f_f(t), f_g(t), f_h(t), f_k(t), f_l(t)], self.mu) 
         else:
-            cart = np.zeros((6,len(self.times)))
-            for idx in range(len(self.times)):
-                cart[:,idx] = mee_with_a2sv(self.states[idx], self.mu)
+            cart = np.zeros((6,len(times)))
+            for idx in range(len(times)):
+                cart[:,idx] = mee_with_a2sv(states[idx], self.mu)
         return cart
 
 
@@ -709,11 +745,22 @@ class RQLaw:
         self, 
         figsize=(6,6),
         interpolate=True, 
-        steps=None, 
+        steps=None,
+        to_plot=0
     ):
         """Plot trajectory in xy-plane"""
+        assert to_plot in [0,1,2], "to_plot must be 0, 1, or 2"
+        if to_plot == 0:
+            states = self.states
+            times = self.times
+        elif to_plot == 1:
+            states = self.states1
+            times = self.times1
+        else: 
+            states = self.states2
+            times = self.times2
         # get cartesian history
-        cart = self.get_cartesian_history(interpolate, steps)
+        cart = self.get_cartesian_history(states, times, interpolate, steps)
 
         fig, ax = plt.subplots(1,1,figsize=figsize)
         # plot initial and final orbit
@@ -737,11 +784,25 @@ class RQLaw:
         steps=None, 
         plot_sphere=True,
         sphere_radius=0.35,
-        scale=1.02
+        scale=1.02,
+        to_plot=0
     ):
         """Plot trajectory in xyz"""
+        assert to_plot in [0,1,2], "to_plot must be 0, 1, or 2"
+        if to_plot == 0:
+            states = self.states
+            statesT = self.statesT
+            times = self.times
+        elif to_plot == 1:
+            states = self.states1
+            statesT = self.statesT1
+            times = self.times1
+        else: 
+            states = self.states2
+            statesT = self.statesT2
+            times = self.times2
         # get cartesian history
-        cart = self.get_cartesian_history(interpolate, steps)
+        cart = self.get_cartesian_history(states, times, interpolate, steps)
 
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(projection='3d')
@@ -768,8 +829,8 @@ class RQLaw:
         ax.scatter(cart[0,-1], cart[1,-1], cart[2,-1], label="Chaser's final position", c="black", marker="o")
 
         # plot target's initial and final positions
-        sv0 = mee_with_a2sv(self.statesT[0], self.mu)
-        svf = mee_with_a2sv(self.statesT[-1], self.mu)
+        sv0 = mee_with_a2sv(statesT[0], self.mu)
+        svf = mee_with_a2sv(statesT[-1], self.mu)
         ax.scatter(sv0[0], sv0[1], sv0[2], label="Target's initial position", c="yellow", marker="x")
         ax.scatter(svf[0], svf[1], svf[2], label="Target's final position", c="yellow", marker="o")
         
