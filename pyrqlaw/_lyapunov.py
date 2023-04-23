@@ -21,6 +21,10 @@ def lyapunov_control_angles(
         r_petro, k_petro, 
         wp, 
         woe,
+        l_mesh,
+        wl,
+        wscl,
+        deltaL=0
     ):
     """Compute thrust angles from Lyapunov feedback control law
     
@@ -41,26 +45,19 @@ def lyapunov_control_angles(
         r_petro (float): scalar factor r to prevent non-convergence, default is 2.0
         wp (float): penalty scalar on minimum periapsis, default is 1.0
         woe (np.array): weight on each osculating element
+        l_mesh (float): number of points for the mesh in true longitude
+        wl (float): amplitude weight in Sa
+        wscl (float): frequency weight in Sa
     
     Returns:
         (tuple): alpha, beta, vector u, list of columns of psi
     """
-    l_range = np.linspace(0,2*np.pi,num=100,endpoint=False)
     oe_5 = oe[:5] # a, f, g, h, k
-
-    # evaluate the max and maximizer of fdot_x for L in [0,2pi)
-    fdot_x = np.array([fun_eval_fdot(mu, accel, np.concatenate((oe_5,[l]))) for l in l_range])
-    fdot_xx = np.max(fdot_x)
-    l_max_f = l_range[np.argmax(fdot_x)]
-
-    # evaluate the max and maximizer of gdot_x for L in [0,2pi)
-    gdot_x = np.array([fun_eval_gdot(mu, accel, np.concatenate((oe_5,[l]))) for l in l_range])
-    gdot_xx = np.max(gdot_x)
-    l_max_g = l_range[np.argmax(gdot_x)]
-
-    # compute dfdoe_max, dgdoe_max
-    dfdoe_max = fun_eval_dfdoe(mu, accel, np.concatenate((oe_5,[l_max_f])))
-    dgdoe_max = fun_eval_dgdoe(mu, accel, np.concatenate((oe_5,[l_max_g])))
+    lmax_f, lmax_g = eval_lmax(mu, accel, oe, fun_eval_fdot, fun_eval_gdot, l_mesh=l_mesh)
+    fdot_xx = fun_eval_fdot(mu, accel, np.concatenate((oe_5,[lmax_f])))
+    gdot_xx = fun_eval_gdot(mu, accel, np.concatenate((oe_5,[lmax_g])))
+    dfdoe_max = fun_eval_dfdoe(mu, accel, np.concatenate((oe_5,[lmax_f])))
+    dgdoe_max = fun_eval_dgdoe(mu, accel, np.concatenate((oe_5,[lmax_g])))
 
     # compute D1, D2, D3
     d_raw, psi = fun_lyapunov_control(
@@ -75,7 +72,10 @@ def lyapunov_control_angles(
         fdot_xx, 
         gdot_xx, 
         dfdoe_max, 
-        dgdoe_max
+        dgdoe_max,
+        wl,
+        wscl,
+        deltaL
     )
 
     # compute thrust angles
@@ -86,3 +86,22 @@ def lyapunov_control_angles(
     alpha = np.arctan2(-d[0],-d[1]) 
     beta = np.arctan(-d[2]/np.sqrt(d[0]**2 + d[1]**2))
     return alpha, beta, d_float, psi
+
+def eval_lmax(mu, 
+              accel, 
+              oe, 
+              fun_eval_fdot, 
+              fun_eval_gdot, 
+              l_mesh=100):
+    l_range = np.linspace(0,2*np.pi,num=l_mesh,endpoint=False)
+    oe_5 = oe[:5] # a, f, g, h, k
+
+    # evaluate the maximizer of fdot_x for L in [0,2pi)
+    fdot_x = np.array([fun_eval_fdot(mu, accel, np.concatenate((oe_5,[l]))) for l in l_range])
+    lmax_f = l_range[np.argmax(fdot_x)]
+
+    # evaluate the maximizer of gdot_x for L in [0,2pi)
+    gdot_x = np.array([fun_eval_gdot(mu, accel, np.concatenate((oe_5,[l]))) for l in l_range])
+    lmax_g = l_range[np.argmax(gdot_x)]
+
+    return lmax_f, lmax_g
