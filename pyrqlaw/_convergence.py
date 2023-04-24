@@ -11,8 +11,8 @@ def check_convergence(oe, oeT, woe, wl, tol_oe, deltaL=0):
     """Stage 1 convergence: check convergence between oe[:5] and oeT[:5]"""
     check_array = np.zeros(6,)
     doe = np.abs(oeT - oe)  # FIXME is this ok? or should we be careful for angles?
-    print(doe)
-    print(doe/tol_oe)
+    # print(doe)
+    # print(doe/tol_oe)
     # check convergence for each slow element: a, f, g, h, k
     for idx in range(5):
         if woe[idx] > 0.0:

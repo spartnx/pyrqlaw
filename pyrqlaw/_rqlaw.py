@@ -94,7 +94,7 @@ class RQLaw:
 
         # tolerance for convergence
         if tol_oe is None:
-            self.tol_oe = np.array([1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 1e-3])
+            self.tol_oe = np.array([1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 3e-3])
         else:
             assert len(tol_oe)==6, "tol_oe must have 6 components"
             self.tol_oe = np.array(tol_oe)
@@ -340,9 +340,9 @@ class RQLaw:
             t_iter += self.t_step  # update time
             mass_iter -= self.mdot*self.t_step*throttle
             self.t_step = max(self.step_min, min(self.step_max,h_next))
-            # print("l = " + str(oe_iter[5]))
-            # print("lT = " + str(oeT_iter[5]))
-            # print("deltaL = " + str(self.eval_deltaL(oe_iter[5], oeT_iter[5])))
+            print("l = " + str(oe_iter[5]))
+            print("lT = " + str(oeT_iter[5]))
+            print("deltaL = " + str(self.eval_deltaL(oe_iter[5], oeT_iter[5])))
                 
             # check convergence
             if check_convergence(oe_iter, oeT_iter, self.woe1, self.wl1, self.tol_oe) == True:
@@ -470,6 +470,8 @@ class RQLaw:
             qdot_list.append(qdot_test)
         return min(qdot_list), max(qdot_list)
 
+    def check_doe_stage2(self):
+        return check_convergence(self.oe0, self.oeT, self.woe2, self.wl2, self.tol_oe)
 
     def solve_stage2(self):
         """Propagate and solve control problem for stage 2 (phasing)
@@ -632,14 +634,18 @@ class RQLaw:
         assert to_plot in [0,1,2], "to_plot must be 0, 1, or 2"
         if to_plot == 0:
             states = self.states
+            statesT = self.statesT
             times = np.array(self.times) * time_scale
         elif to_plot == 1:
             states = self.states1
+            statesT = self.statesT1
             times = np.array(self.times1) * time_scale
         else: 
             states = self.states2
+            statesT = self.statesT2
             times = np.array(self.times2) * time_scale
         oes = np.zeros((6,len(times)))
+        oesT = np.zeros((6,len(times)))
         if to_keplerian:
             labels = ["a", "e", "i", "raan", "om", "ta"]
             if distance_unit != None:
@@ -660,20 +666,27 @@ class RQLaw:
             if to_keplerian:
                 oes[:,idx] = mee_with_a2kep(states[idx])
                 oes[0,idx] *= distance_scale
+                oesT[:,idx] = mee_with_a2kep(statesT[idx])
+                oesT[0,idx] *= distance_scale
                 if degrees:
-                    oes[2:6,idx] = np.degrees(oes[2:6,idx])
+                    oes[2:6,idx] = np.degrees(oes[2:6,idx]) % 360
+                    oesT[2:6,idx] = np.degrees(oesT[2:6,idx]) % 360
+                else:
+                    oes[2:6,idx] = oes[2:6,idx] % (2*np.pi)
+                    oesT[2:6,idx] = oesT[2:6,idx] % (2*np.pi)
             else:
                 oes[:,idx] = states[idx]
+                oesT[:,idx] = statesT[idx]
                 
         fig, axs = plt.subplots(3,2,figsize=figsize)
         i = 0
         j = 0
-        for idx in range(5):
+        for idx in range(6):
             axs[i, j].plot(times, oes[idx,:])
+            axs[i, j].plot(times, oesT[idx,:], c="crimson")
             axs[i, j].set(xlabel=time_label, ylabel=labels[idx])
             i = (i + 1) % 3
             j = (j + 1) % 2
-        axs[i, 1].plot(times, oes[5,:] % (2*np.pi))
         axs[i, 1].set(xlabel=time_label, ylabel=labels[5])
         return fig, axs
 

@@ -26,8 +26,11 @@ VU = DU/TU # speed along an orbit of radius DU, m/s
 ######################
 ######  INPUTS  ######
 ######################
-# Solve transfer only or both trasnfer and phasing
-transfer_only=False
+# Choose type of the maneuver
+# 0 : orbital transfer followed by phasing
+# 1 : orbital transfer only
+# 2: phasing only (this presupposes the target and the chaser are initially along the same orbit)
+maneuver_type = 0
 
 # Chaser's initial state (Keplerian elements)
 sma_C = DU + 2e6 # semi-major axis, m
@@ -131,25 +134,22 @@ prob.pretty_settings()
 prob.pretty()
 
 # Solve the problem
-if transfer_only:
-    prob.solve_stage1(eta_r=eta_r1)
-    prob.pretty_results() 
-else:
+if maneuver_type == 0:    
     prob.solve_stage1(eta_r=eta_r1)
     prob.solve_stage2()
-    prob.pretty_results() 
+elif maneuver_type == 1:
+    prob.solve_stage1(eta_r=eta_r1)
+else:
+    if prob.check_doe_stage2() == True: # -> test this case
+        # if false, orbital transfer is needed before performing phasing - set maneuver_type to 1
+        prob.solve_stage2(eta_r=eta_r1)
+prob.pretty_results() 
 
 run_time = time.time() - start
 print("\nRuntime: " + str(round(run_time,2)) + " sec")
 
 # Plots
-if transfer_only:
-    fig1, ax1 = prob.plot_elements_history(to_keplerian=True, 
-                                            time_scale=TU/(24*3600), distance_scale=DU/1000, 
-                                            time_unit="days", distance_unit="km")
-    fig2, ax2 = prob.plot_trajectory_3d(sphere_radius=Re/DU)
-    fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days")
-else:
+if maneuver_type == 0:
     # Using states over Stage 1 and Stage 2
     fig1, ax1 = prob.plot_elements_history(to_keplerian=True, 
                                             time_scale=TU/(24*3600), distance_scale=DU/1000, 
@@ -168,6 +168,19 @@ else:
                                             time_unit="days", distance_unit="km", to_plot=2)
     fig2, ax2 = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=2)
     fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
+elif maneuver_type == 1:
+    fig1, ax1 = prob.plot_elements_history(to_keplerian=True, 
+                                            time_scale=TU/(24*3600), distance_scale=DU/1000, 
+                                            time_unit="days", distance_unit="km", to_plot=1)
+    fig2, ax2 = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=1)
+    fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=1)
+else:
+    fig1, ax1 = prob.plot_elements_history(to_keplerian=True, 
+                                            time_scale=TU/(24*3600), distance_scale=DU/1000, 
+                                            time_unit="days", distance_unit="km", to_plot=2)
+    fig2, ax2 = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=2)
+    fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
+
 
 plt.show()
 #############################
