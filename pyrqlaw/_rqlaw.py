@@ -98,8 +98,6 @@ class RQLaw:
         else:
             assert len(tol_oe)==6, "tol_oe must have 6 components"
             self.tol_oe = np.array(tol_oe)
-        self.tol_oe_relaxed = 10*self.tol_oe  # relaxed tolerance -> why?
-        self.exit_at_relaxed = 25
 
         # minimum bounds on elements
         if oe_min is None:
@@ -135,6 +133,7 @@ class RQLaw:
         self.step_max = 2.0
         self.abs_tol = abs_tol # absolute tolerance
         self.rel_tol = rel_tol # relative tolerance
+        self.integrator_str = integrator
         if integrator == "rk4":
             self.integrator = rk4
         elif integrator == "rkf45":
@@ -240,18 +239,16 @@ class RQLaw:
         self.times1 = [t_iter,]
         self.states1 = [oe_iter,]
         self.statesT1 = [oeT_iter,]
-        self.masses = [mass_iter,]
+        self.masses1 = [mass_iter,]
         self.controls1 = []
         n_nan_angles = 0
 
         if self.verbosity >= 2:
-            header = " iter   |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |  el6        |"
+            header = "Stage 1:   iter |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |"
     
         # iterate until tf_max
         idx = 0
         while t_iter < self.tf_max:
-            print("Stage 1 : " + str(round(t_iter/self.tf_max*100,2)))
-
             # ensure numerical stabilty
             oe_iter = elements_safety(oe_iter, self.oe_min, self.oe_max)
 
@@ -340,9 +337,6 @@ class RQLaw:
             t_iter += self.t_step  # update time
             mass_iter -= self.mdot*self.t_step*throttle
             self.t_step = max(self.step_min, min(self.step_max,h_next))
-            print("l = " + str(oe_iter[5]))
-            print("lT = " + str(oeT_iter[5]))
-            print("deltaL = " + str(self.eval_deltaL(oe_iter[5], oeT_iter[5])))
                 
             # check convergence
             if check_convergence(oe_iter, oeT_iter, self.woe1, self.wl1, self.tol_oe) == True:
@@ -355,7 +349,7 @@ class RQLaw:
                 if np.mod(idx, 20*self.print_frequency) == 0:
                     print("\n" + header)
                 t_fraction = t_iter/self.tf_max
-                print(f"Stage 1: {idx:6.0f} | {t_fraction: 1.3e} | {oe_iter[0]-oeT_iter[0]: 1.4e} | {oe_iter[1]-oeT_iter[1]: 1.4e} | {oe_iter[2]-oeT_iter[2]: 1.4e} | {oe_iter[3]-oeT_iter[3]: 1.4e} | {oe_iter[4]-oeT_iter[4]: 1.4e} | {oe_iter[5]-oeT_iter[5]: 1.4e} |")
+                print(f"         {idx:6.0f} | {t_fraction: 1.3e} | {oe_iter[0]-oeT_iter[0]: 1.4e} | {oe_iter[1]-oeT_iter[1]: 1.4e} | {oe_iter[2]-oeT_iter[2]: 1.4e} | {oe_iter[3]-oeT_iter[3]: 1.4e} | {oe_iter[4]-oeT_iter[4]: 1.4e} |")
 
             # check if mass is below threshold
             if mass_iter <= self.mass_min:
@@ -368,7 +362,7 @@ class RQLaw:
             self.times1.append(t_iter)
             self.states1.append(oe_iter) 
             self.statesT1.append(oeT_iter)
-            self.masses.append(mass_iter)
+            self.masses1.append(mass_iter)
             self.controls1.append([alpha, beta, throttle])
 
             # index update
@@ -379,6 +373,7 @@ class RQLaw:
         self.statesT = copy.deepcopy(self.statesT1)
         self.times = copy.deepcopy(self.times1)
         self.controls = copy.deepcopy(self.controls1)
+        self.masses = copy.deepcopy(self.masses1)
 
         if self.converge == False:
             if self.verbosity > 0:
@@ -497,15 +492,14 @@ class RQLaw:
         self.statesT2 = [oeT_iter,]
         self.times2 = [t_iter,]
         self.controls2 = [self.controls[-1],]
-
+        self.masses2 = [mass_iter,]
+        
         if self.verbosity >= 2:
-            header = " iter   |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |  el6        |"
+            header = "Stage 2:   iter |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |  del6       |"
     
         # iterate until tf_max
         idx = 0
         while t_iter < self.tf_max:
-            print("Stage 2 : " + str(round(t_iter/self.tf_max*100,2)))
-
             # ensure numerical stabilty
             oe_iter = elements_safety(oe_iter, self.oe_min, self.oe_max)
 
@@ -584,7 +578,7 @@ class RQLaw:
                 if np.mod(idx, 20*self.print_frequency) == 0:
                     print("\n" + header)
                 t_fraction = t_iter/self.tf_max
-                print(f"Stage 2: {idx:6.0f} | {t_fraction: 1.3e} | {oe_iter[0]-oeT_iter[0]: 1.4e} | {oe_iter[1]-oeT_iter[1]: 1.4e} | {oe_iter[2]-oeT_iter[2]: 1.4e} | {oe_iter[3]-oeT_iter[3]: 1.4e} | {oe_iter[4]-oeT_iter[4]: 1.4e} | {oe_iter[5]-oeT_iter[5]: 1.4e} |")
+                print(f"         {idx:6.0f} | {t_fraction: 1.3e} | {oe_iter[0]-oeT_iter[0]: 1.4e} | {oe_iter[1]-oeT_iter[1]: 1.4e} | {oe_iter[2]-oeT_iter[2]: 1.4e} | {oe_iter[3]-oeT_iter[3]: 1.4e} | {oe_iter[4]-oeT_iter[4]: 1.4e} | {deltaL: 1.4e} |")
 
             # check if mass is below threshold
             if mass_iter <= self.mass_min:
@@ -597,7 +591,7 @@ class RQLaw:
             self.times2.append(t_iter)
             self.states2.append(oe_iter) 
             self.statesT2.append(oeT_iter)
-            self.masses.append(mass_iter)
+            self.masses2.append(mass_iter)
             self.controls2.append([alpha, beta, throttle])
 
             # index update
@@ -608,6 +602,7 @@ class RQLaw:
         self.statesT += self.statesT2
         self.times += self.times2
         self.controls += self.controls2
+        self.masses += self.masses2
 
         if self.converge == False:
             if self.verbosity > 0:
@@ -877,7 +872,7 @@ class RQLaw:
         print(f"  {self.element_names[2]}  : {self.states[-1][2]:1.4e} (error: {abs(self.states[-1][2]-self.statesT[-1][2]):1.4e})")
         print(f"  {self.element_names[3]}  : {self.states[-1][3]:1.4e} (error: {abs(self.states[-1][3]-self.statesT[-1][3]):1.4e})")
         print(f"  {self.element_names[4]}  : {self.states[-1][4]:1.4e} (error: {abs(self.states[-1][4]-self.statesT[-1][4]):1.4e})")
-        print(f"  {self.element_names[5]}  : {self.states[-1][5]:1.4e} (error: {abs(self.states[-1][5]-self.statesT[-1][5]):1.4e})")
+        print(f"  {self.element_names[5]}  : {self.states[-1][5]:1.4e} (error: {abs(self.eval_deltaL(self.states[-1][5], self.statesT[-1][5])):1.4e})")
         print(f"Transfer time : {self.times[-1]}")
         print(f"Final mass    : {self.masses[-1]}")
         return
@@ -887,8 +882,6 @@ class RQLaw:
         """Pretty print settings"""
         print(f"\nElements type  : MEE with sma")
         print(f"Elements names : {self.element_names}")
-        print(f"Integrator    : {self.integrator}")
+        print(f"Integrator    : {self.integrator_str}")
         print(f"Tolerance     : {self.tol_oe}")
-        print(f"Relaxed tolerance : {self.tol_oe_relaxed}")
-        print(f"Exit at relaxed   : {self.exit_at_relaxed}")
         return
