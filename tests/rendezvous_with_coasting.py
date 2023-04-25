@@ -7,7 +7,7 @@ sys.path.append("../")
 import pyrqlaw
 
 
-def scenario(ta0, fig_display=True, fig_save=True):
+def scenario(eta_r, fig_display=True, fig_save=True):
     # start measuring time
     start = time.time()
 
@@ -33,7 +33,7 @@ def scenario(ta0, fig_display=True, fig_save=True):
     inc_C = 0 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
     raan_C = 0 # RAAN, rad
     aop_C = 0 # argument of periapse, rad
-    ta_C = ta0 # true anomaly, rad
+    ta_C = np.pi # true anomaly, rad
 
     # Target's initial state (Keplerian elements)
     sma_T = DU + 3e6 # semi-major axis, m
@@ -52,13 +52,14 @@ def scenario(ta0, fig_display=True, fig_save=True):
     mdot = thrust/(g0*isp) # mass flow rate, kg/s
 
     # Integration parameters
-    tf_max = 300 * (24*3600) # max time of flight, s
+    tf_max = 600 * (24*3600) # max time of flight, s
     t_step = 0.1 # integration step, non-dimensional
 
     # RQ-Law parameters common to both stages
     rpmin = DU
     l_mesh = 100
     t_mesh = 20
+    tol_oe = [1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 1e-3]
 
     # RQ-Law parameters: Stage 1 (orbital transfer - matching chaser's and target's orbits)
     k_petro1 = 100 # Penalty function parameter
@@ -67,7 +68,7 @@ def scenario(ta0, fig_display=True, fig_save=True):
     m_petro1 = 3 # For weight function Sa associated with sma
     n_petro1 = 4 # For weight function Sa associated with sma
     r_petro1 = 2 # For weight function Sa associated with sma
-    eta_r1 = 0 # Relative effectivity threshold - automatically set to 0 in stage 2
+    eta_r1 = eta_r # Relative effectivity threshold - automatically set to 0 in stage 2
 
     # RQ-Law parameters: Stage 2 (phasing - matching chaser's and target's positions)
     k_petro2 = 100 # Penalty function parameter
@@ -110,7 +111,8 @@ def scenario(ta0, fig_display=True, fig_save=True):
                     r_petro1=r_petro1, r_petro2=r_petro2,
                     wp1=wp1, wp2=wp2,
                     l_mesh=l_mesh, t_mesh=t_mesh,
-                    verbosity=2
+                    verbosity=2,
+                    tol_oe=tol_oe
                     )
     prob.set_problem(
                     oe0, oeT, 
@@ -151,18 +153,18 @@ def scenario(ta0, fig_display=True, fig_save=True):
     fig33, ax33 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
 
     if fig_save:
-        fig11.savefig(f"../plots/chaser_departure_point/Elements history (stages 1, 2) - ta0 {int(np.degrees(ta0))}")
-        fig21.savefig(f"../plots/chaser_departure_point/Trajectory (stages 1, 2) - ta0 {int(np.degrees(ta0))}")
-        fig31.savefig(f"../plots/chaser_departure_point/Controls history (stages 1, 2) - ta0 {int(np.degrees(ta0))}")
-        fig12.savefig(f"../plots/chaser_departure_point/Elements history (stage 1) - ta0 {int(np.degrees(ta0))}")
-        fig22.savefig(f"../plots/chaser_departure_point/Trajectory (stage 1) - ta0 {int(np.degrees(ta0))}")
-        fig32.savefig(f"../plots/chaser_departure_point/Controls history (stage 1) - ta0 {int(np.degrees(ta0))}")
-        fig13.savefig(f"../plots/chaser_departure_point/Elements history (stage 2) - ta0 {int(np.degrees(ta0))}")
-        fig23.savefig(f"../plots/chaser_departure_point/Trajectory (stage 2) - ta0 {int(np.degrees(ta0))}")
-        fig33.savefig(f"../plots/chaser_departure_point/Controls history (stage 2) - ta0 {int(np.degrees(ta0))}")
+        fig11.savefig(f"../plots/rendezvous_with_coasting/Elements history (stages 1, 2)")
+        fig21.savefig(f"../plots/rendezvous_with_coasting/Trajectory (stages 1, 2)")
+        fig31.savefig(f"../plots/rendezvous_with_coasting/Controls history (stages 1, 2)")
+        fig12.savefig(f"../plots/rendezvous_with_coasting/Elements history (stage 1)")
+        fig22.savefig(f"../plots/rendezvous_with_coasting/Trajectory (stage 1)")
+        fig32.savefig(f"../plots/rendezvous_with_coasting/Controls history (stage 1)")
+        fig13.savefig(f"../plots/rendezvous_with_coasting/Elements history (stage 2)")
+        fig23.savefig(f"../plots/rendezvous_with_coasting/Trajectory (stage 2)")
+        fig33.savefig(f"../plots/rendezvous_with_coasting/Controls history (stage 2)")
     if fig_display:
         plt.show()
-        #############################
+    #############################
 
     #############################
     #########  OUTPUTS  #########
@@ -175,31 +177,15 @@ def scenario(ta0, fig_display=True, fig_save=True):
     
 
 if __name__ == "__main__":
-    # Compare the figures with Figure 4 in Narayanaswamy and Damaren 
+    # Compare the figures with Figure 8 in Narayanaswamy and Damaren 
     # (Equinoctial Lyapunov Control Law for Low-Thrust Rendezvous)
-    ta0 = 0
-    scenario(ta0, fig_display=True, fig_save=False)
-
-    # Compute final mass and tofs in all 8 scenarios
-    end_masses = []
-    mass_deltas = []
-    tofs = []
-    exitcodes = []
-    true_anomalies = np.linspace(0,2*np.pi, num=8, endpoint=False)
-    for ta0 in true_anomalies:
-        end_mass, mass_delta, tof, exitcode = scenario(ta0, fig_display=False, fig_save=True)
-        end_masses.append(end_mass)
-        mass_deltas.append(mass_delta)
-        tofs.append(tof)
-        exitcodes.append(exitcode)
-
-    # Outputs to be compared with Table 5 in Narayanaswamy and Damaren 
-    # (Equinoctial Lyapunov Control Law for Low-Thrust Rendezvous)
-    print(list(np.degrees(true_anomalies)))
-    print(end_masses)
-    print(mass_deltas)
-    print(tofs)
-    print(exitcodes)
+    eta_r = 0.1
+    end_mass, mass_delta, tof, exitcode = scenario(eta_r, fig_display=True, fig_save=True)
+    print(eta_r)
+    print(end_mass)
+    print(mass_delta)
+    print(tof)
+    print(exitcode)
 
     
 

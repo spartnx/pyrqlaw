@@ -10,7 +10,7 @@ from scipy import interpolate
 from ._symbolic import symbolic_rqlaw_mee_with_a
 from ._lyapunov import lyapunov_control_angles, eval_lmax
 from ._integrate import eom_mee_with_a_gauss, integrate_next_step, rk4, rkf45, dopri5
-from ._convergence import check_convergence, elements_safety
+from ._convergence import check_convergence_oe, check_convergence_sv, elements_safety
 from ._elements import (
     mee_with_a2sv, get_orbit_coordinates, mee_with_a2kep
 )
@@ -26,8 +26,8 @@ class RQLaw:
 
     Exitcodes:
     0 : initial value (problem not yet attempted)
-    1 : solved within tolerance
-    2 : solved within relaxed tolerance
+    1 : stage 1 solved
+    2 : stage 1 and stage 2 solved
     -1 : mass is below threshold
     -2 : target elements could not be reached within allocated time
     -3 : thrust angles from feedback control law is nan
@@ -63,12 +63,13 @@ class RQLaw:
         integrator="dopri5",
         t_mesh=20, l_mesh=100,
         oe_min=None, oe_max=None,
-        tol_oe=None,
+        tol_oe=None, tol_sv=None,
         nan_angles_threshold=10,
         verbosity=1,
         print_frequency=200,
         abs_tol=1e-7,
-        rel_tol=1e-9
+        rel_tol=1e-9,
+        standalone_stage2=False
     ):
         """Construct RQLaw object"""
         # dynamics
@@ -91,13 +92,21 @@ class RQLaw:
 
         # settings
         self.verbosity = verbosity
+        self.standalone_stage2 = standalone_stage2
 
-        # tolerance for convergence
+        # tolerance for convergence on orbital elements
         if tol_oe is None:
-            self.tol_oe = np.array([1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 3e-3])
+            self.tol_oe = np.array([1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 1e-3])
         else:
             assert len(tol_oe)==6, "tol_oe must have 6 components"
             self.tol_oe = np.array(tol_oe)
+
+        # tolerance for convergence on state vector
+        if tol_sv is None:
+            self.tol_sv = np.array([1e-2, 1e-2])
+        else:
+            assert len(tol_sv)==2, "tol_sv must have 2 components"
+            self.tol_sv = np.array(tol_sv)
 
         # minimum bounds on elements
         if oe_min is None:
@@ -161,7 +170,7 @@ class RQLaw:
         tmax, 
         mdot, 
         tf_max, 
-        t_step=0.1,
+        t_step=0.001,
         mass_min=0.1,
         woe1=None,
         woe2=None,
@@ -315,10 +324,10 @@ class RQLaw:
                         t_iter, oe_iter, oeT_iter, accel_thrust
                     )
                     val_eta_r = (qdot_current - qdot_max)/(qdot_min - qdot_max)
-                    print("val_eta_r = " + str(val_eta_r))
-                    print("qdot_current = " + str(qdot_current))
-                    print("qdot_min = " + str(qdot_max))
-                    print("qdot_max = " + str(qdot_min))
+                    # print("val_eta_r = " + str(val_eta_r))
+                    # print("qdot_current = " + str(qdot_current))
+                    # print("qdot_min = " + str(qdot_max))
+                    # print("qdot_max = " + str(qdot_min))
                     # turn thrust off if below threshold
                     if val_eta_r < self.eta_r:
                         throttle = 0  # turn off
@@ -339,7 +348,7 @@ class RQLaw:
             self.t_step = max(self.step_min, min(self.step_max,h_next))
                 
             # check convergence
-            if check_convergence(oe_iter, oeT_iter, self.woe1, self.wl1, self.tol_oe) == True:
+            if check_convergence_oe(oe_iter, oeT_iter, self.woe1, self.wl1, self.tol_oe) == True:
                 self.exitcode = 1
                 self.converge = True
                 break
@@ -466,7 +475,7 @@ class RQLaw:
         return min(qdot_list), max(qdot_list)
 
     def check_doe_stage2(self):
-        return check_convergence(self.oe0, self.oeT, self.woe2, self.wl2, self.tol_oe)
+        return check_convergence_oe(self.oe0, self.oeT, self.woe2, self.wl2, self.tol_oe)
 
     def solve_stage2(self):
         """Propagate and solve control problem for stage 2 (phasing)
@@ -481,18 +490,27 @@ class RQLaw:
         self.converge = False
 
         # initialize values for propagation
-        t_iter = self.times1[-1]
-        oe_iter = self.states1[-1]
-        oeT_iter = self.statesT1[-1]
-        mass_iter = self.masses[-1]
+        if self.standalone_stage2 == False:
+            t_iter = self.times1[-1]
+            oe_iter = self.states1[-1]
+            oeT_iter = self.statesT1[-1]
+            mass_iter = self.masses[-1]
+        else:
+            t_iter = 0.0
+            oe_iter = self.oe0
+            oeT_iter = self.oeT
+            mass_iter = self.mass0
 
         # initialize storage
         n_nan_angles = 0
         self.states2 = [oe_iter,]
         self.statesT2 = [oeT_iter,]
         self.times2 = [t_iter,]
-        self.controls2 = [self.controls[-1],]
         self.masses2 = [mass_iter,]
+        if self.standalone_stage2 == False:
+            self.controls2 = [self.controls[-1],]
+        else:
+            self.controls2 = []
         
         if self.verbosity >= 2:
             header = "Stage 2:   iter |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |  del6       |"
@@ -568,8 +586,10 @@ class RQLaw:
             self.t_step = max(self.step_min, min(self.step_max,h_next))
                 
             # check convergence
-            if check_convergence(oe_iter, oeT_iter, self.woe2, self.wl2, self.tol_oe, deltaL=deltaL) == True:
-                self.exitcode = 1
+            check_oe = check_convergence_oe(oe_iter, oeT_iter, self.woe2, self.wl2, self.tol_oe, deltaL=deltaL)
+            check_sv = check_convergence_sv(oe_iter, oeT_iter, self.tol_sv, self.mu)
+            if check_oe == True or check_sv == True:
+                self.exitcode = 2
                 self.converge = True
                 break
             
@@ -598,11 +618,18 @@ class RQLaw:
             idx += 1
 
         # Update storage over full timeline (stage 1 and stage 2)
-        self.states += self.states2
-        self.statesT += self.statesT2
-        self.times += self.times2
-        self.controls += self.controls2
-        self.masses += self.masses2
+        if self.standalone_stage2 == False:
+            self.states += self.states2
+            self.statesT += self.statesT2
+            self.times += self.times2
+            self.controls += self.controls2
+            self.masses += self.masses2
+        else:
+            self.states = copy.deepcopy(self.states2)
+            self.statesT = copy.deepcopy(self.statesT2)
+            self.times = copy.deepcopy(self.times2)
+            self.controls = copy.deepcopy(self.controls2)
+            self.masses = copy.deepcopy(self.masses2)
 
         if self.converge == False:
             if self.verbosity > 0:
@@ -682,7 +709,6 @@ class RQLaw:
             axs[i, j].set(xlabel=time_label, ylabel=labels[idx])
             i = (i + 1) % 3
             j = (j + 1) % 2
-        axs[i, 1].set(xlabel=time_label, ylabel=labels[5])
         return fig, axs
 
 
@@ -696,8 +722,12 @@ class RQLaw:
             controls = self.controls1
             times = np.array(self.times1)[0:-1] * time_scale
         else: 
-            controls = self.controls2
-            times = np.array(self.times2) * time_scale
+            if self.standalone_stage2 == False:
+                controls = self.controls2
+                times = np.array(self.times2) * time_scale
+            else:
+                controls = self.controls2
+                times = np.array(self.times2)[0:-1] * time_scale
         alphas, betas, throttles = [], [], []
         for ctl in controls:
             alphas.append(ctl[0])
