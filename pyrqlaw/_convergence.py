@@ -50,6 +50,23 @@ def check_convergence_sv(oe, oeT, tol_sv, mu):
     else:
         return False
 
+def check_convergence_q(tol_q, eval_q, eval_lmax, eval_fdot, eval_gdot, eval_dfdoe, eval_dgdoe, 
+                        mu, accel_thrust, oe_iter, oeT_iter, 
+                        rpmin, m_petro1, n_petro1, r_petro1,
+                        k_petro1, wp1, woe1, fdot_xx, gdot_xx,
+                        dfdoe_max, dgdoe_max, wl1, wscl1, l_mesh, deltaL=0):
+    lmax_f, lmax_g = eval_lmax(mu, accel_thrust, oe_iter, eval_fdot, eval_gdot, l_mesh=l_mesh)
+    fdot_xx = eval_fdot(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_f])))
+    gdot_xx = eval_gdot(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_g])))
+    dfdoe_max = eval_dfdoe(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_f])))
+    dgdoe_max = eval_dgdoe(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_g])))
+
+    q_val = accel_thrust**2 * eval_q(mu, accel_thrust, oe_iter, oeT_iter,
+                                        rpmin, m_petro1, n_petro1, r_petro1,
+                                        k_petro1, wp1, woe1, fdot_xx, gdot_xx, 
+                                        dfdoe_max, dgdoe_max, wl1, wscl1, deltaL)
+    return q_val < tol_q
+
 @njit
 def elements_safety(oe, oe_min, oe_max):
     """Ensure osculating elements stays within bounds

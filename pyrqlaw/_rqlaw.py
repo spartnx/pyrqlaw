@@ -10,7 +10,9 @@ from scipy import interpolate
 from ._symbolic import symbolic_rqlaw_mee_with_a
 from ._lyapunov import lyapunov_control_angles, eval_lmax
 from ._integrate import eom_mee_with_a_gauss, integrate_next_step, rk4, rkf45, dopri5
-from ._convergence import check_convergence_oe, check_convergence_sv, elements_safety
+from ._convergence import (
+    check_convergence_oe, check_convergence_sv, check_convergence_q, elements_safety
+)
 from ._elements import (
     mee_with_a2sv, get_orbit_coordinates, mee_with_a2kep
 )
@@ -63,7 +65,7 @@ class RQLaw:
         integrator="dopri5",
         t_mesh=20, l_mesh=100,
         oe_min=None, oe_max=None,
-        tol_oe=None, tol_sv=None,
+        tol_oe=None, tol_sv=None, tol_q=None,
         nan_angles_threshold=10,
         verbosity=1,
         print_frequency=200,
@@ -108,6 +110,10 @@ class RQLaw:
             assert len(tol_sv)==2, "tol_sv must have 2 components"
             self.tol_sv = np.array(tol_sv)
 
+        # tolerance for convergence on lyapunov function
+        if tol_q is None:
+            self.tol_q = 1e-7
+        
         # minimum bounds on elements
         if oe_min is None:
             self.oe_min = np.array([0.05, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf])
@@ -128,7 +134,7 @@ class RQLaw:
         # construct element names
         self.element_names = ["a", "f", "g", "h", "k", "L"]
         self.eom = eom_mee_with_a_gauss
-        fun_lyapunov_control, fun_eval_psi, _, fun_eval_fdot, fun_eval_gdot, fun_eval_dfdoe, fun_eval_dgdoe, _, fun_eval_qdot = symbolic_rqlaw_mee_with_a()
+        fun_lyapunov_control, fun_eval_psi, _, fun_eval_fdot, fun_eval_gdot, fun_eval_dfdoe, fun_eval_dgdoe, fun_eval_q, fun_eval_qdot = symbolic_rqlaw_mee_with_a()
         self.lyap_fun = fun_lyapunov_control
         self.psi_fun = fun_eval_psi
         self.eval_fdot = fun_eval_fdot
@@ -136,6 +142,7 @@ class RQLaw:
         self.eval_dfdoe = fun_eval_dfdoe
         self.eval_dgdoe = fun_eval_dgdoe
         self.eval_qdot = fun_eval_qdot
+        self.eval_q = fun_eval_q
 
         # Integrator parameters
         self.step_min = 1e-4
@@ -175,7 +182,9 @@ class RQLaw:
         woe1=None,
         woe2=None,
         wl=0.06609, 
-        wscl=3.3697
+        wscl=3.3697,
+        convergence_fcn_1=None,
+        convergence_fcn_2=None
     ):
         """Set transfer problem
         
@@ -222,6 +231,12 @@ class RQLaw:
         self.mdot  = mdot
         self.mass_min = mass_min
         self.ready = True  # toggle
+
+        # Set convergence functions
+        if convergence_fcn_1 == None:
+            self.convergence_fcn_1 = ["oe", "q"]
+        if convergence_fcn_2 == None:
+            self.convergence_fcn_2 = ["oe", "sv"]
         return
 
 
@@ -348,7 +363,18 @@ class RQLaw:
             self.t_step = max(self.step_min, min(self.step_max,h_next))
                 
             # check convergence
-            if check_convergence_oe(oe_iter, oeT_iter, self.woe1, self.wl1, self.tol_oe) == True:
+            converged = False
+            if "oe" in self.convergence_fcn_1:
+                converged = converged or check_convergence_oe(oe_iter, oeT_iter, self.woe1, self.wl1, self.tol_oe)
+            if "q" in self.convergence_fcn_1:
+                converged = converged or check_convergence_q(self.tol_q, self.eval_q, eval_lmax, self.eval_fdot, 
+                                                                self.eval_gdot, self.eval_dfdoe, self.eval_dgdoe, 
+                                                                self.mu, accel_thrust, oe_iter, oeT_iter, 
+                                                                self.rpmin, self.m_petro1, self.n_petro1, self.r_petro1,
+                                                                self.k_petro1, self.wp1, self.woe1, self.wl1, self.wscl1, self.l_mesh)
+            if "sv" in self.convergence_fcn_1:
+                converged = converged or check_convergence_sv(oe_iter, oeT_iter, self.tol_sv, self.mu)
+            if converged == True:
                 self.exitcode = 1
                 self.converge = True
                 break
@@ -584,11 +610,20 @@ class RQLaw:
             t_iter += self.t_step  # update time
             mass_iter -= self.mdot*self.t_step*throttle
             self.t_step = max(self.step_min, min(self.step_max,h_next))
-                
+
             # check convergence
-            check_oe = check_convergence_oe(oe_iter, oeT_iter, self.woe2, self.wl2, self.tol_oe, deltaL=deltaL)
-            check_sv = check_convergence_sv(oe_iter, oeT_iter, self.tol_sv, self.mu)
-            if check_oe == True or check_sv == True:
+            converged = False
+            if "oe" in self.convergence_fcn_2:
+                converged = converged or check_convergence_oe(oe_iter, oeT_iter, self.woe2, self.wl2, self.tol_oe, deltaL=deltaL)
+            if "q" in self.convergence_fcn_2:
+                converged = converged or check_convergence_q(self.tol_q, self.eval_q, eval_lmax, self.eval_fdot, 
+                                                                self.eval_gdot, self.eval_dfdoe, self.eval_dgdoe, 
+                                                                self.mu, accel_thrust, oe_iter, oeT_iter, 
+                                                                self.rpmin, self.m_petro2, self.n_petro2, self.r_petro2,
+                                                                self.k_petro2, self.wp2, self.woe2, self.wl2, self.wscl2, self.l_mesh)
+            if "sv" in self.convergence_fcn_2:
+                converged = converged or check_convergence_sv(oe_iter, oeT_iter, self.tol_sv, self.mu)
+            if converged == True:
                 self.exitcode = 2
                 self.converge = True
                 break

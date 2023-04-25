@@ -142,7 +142,8 @@ elif maneuver_type == 1:
 else:
     if prob.check_doe_stage2() == True: # -> test this case
         # if false, orbital transfer is needed before performing phasing - set maneuver_type to 1
-        prob.solve_stage2(eta_r=eta_r1)
+        prob.standalone_stage2 = True
+        prob.solve_stage2()
 prob.pretty_results() 
 
 run_time = time.time() - start
