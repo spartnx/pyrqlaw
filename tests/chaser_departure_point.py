@@ -53,7 +53,7 @@ def scenario(ta0, fig_display=True, fig_save=True):
 
     # Integration parameters
     tf_max = 300 * (24*3600) # max time of flight, s
-    t_step = 0.1 # integration step, non-dimensional
+    t_step = 0.001 # integration step, non-dimensional
 
     # RQ-Law parameters common to both stages
     rpmin = DU

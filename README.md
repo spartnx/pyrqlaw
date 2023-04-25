@@ -1,5 +1,5 @@
 # pyrqlaw
-RQ-law feedback control for low-thrust orbital transfer and rendezvous in Python
+RQ-law feedback control for low-thrust orbital transfer and rendezvous in Python. Adapted from [pyqlaw](https://github.com/Yuricst/pyqlaw) by [Yuricst](https://github.com/Yuricst).
 
 ### Dependencies
 

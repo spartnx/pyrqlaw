@@ -53,8 +53,7 @@ def check_convergence_sv(oe, oeT, tol_sv, mu):
 def check_convergence_q(tol_q, eval_q, eval_lmax, eval_fdot, eval_gdot, eval_dfdoe, eval_dgdoe, 
                         mu, accel_thrust, oe_iter, oeT_iter, 
                         rpmin, m_petro1, n_petro1, r_petro1,
-                        k_petro1, wp1, woe1, fdot_xx, gdot_xx,
-                        dfdoe_max, dgdoe_max, wl1, wscl1, l_mesh, deltaL=0):
+                        k_petro1, wp1, woe1, wl1, wscl1, l_mesh, deltaL=0):
     lmax_f, lmax_g = eval_lmax(mu, accel_thrust, oe_iter, eval_fdot, eval_gdot, l_mesh=l_mesh)
     fdot_xx = eval_fdot(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_f])))
     gdot_xx = eval_gdot(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_g])))

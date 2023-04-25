@@ -105,14 +105,14 @@ class RQLaw:
 
         # tolerance for convergence on state vector
         if tol_sv is None:
-            self.tol_sv = np.array([1e-2, 1e-2])
+            self.tol_sv = np.array([1e-3, 1e-3])
         else:
             assert len(tol_sv)==2, "tol_sv must have 2 components"
             self.tol_sv = np.array(tol_sv)
 
         # tolerance for convergence on lyapunov function
         if tol_q is None:
-            self.tol_q = 1e-7
+            self.tol_q = 1e-9
         
         # minimum bounds on elements
         if oe_min is None:

@@ -12,3 +12,8 @@ TOFS
 
 Exitcodes
 [2, 2, 2, 2, 2, 2, 2, 2]
+
+Comments
+- For an initial true anomaly of 0, the phasing stage (stage 2) takes 7 days instead of 1.88 days as in Narayanaswamy's paper (2023).
+  The whole maneuver as given by pyrqlaw takes 290 days instead of 283 days as in Narayanaswamy's paper (2023).
+  This may be due to differences in implementation in the integration scheme or the way the Q function and its derivatives are computed.
