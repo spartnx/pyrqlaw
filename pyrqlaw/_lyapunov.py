@@ -57,6 +57,7 @@ def lyapunov_control_angles(
     gdot_xx = fun_eval_gdot(mu, accel, np.concatenate((oe_5,[lmax_g])))
     dfdoe_max = fun_eval_dfdoe(mu, accel, np.concatenate((oe_5,[lmax_f])))
     dgdoe_max = fun_eval_dgdoe(mu, accel, np.concatenate((oe_5,[lmax_g])))
+    # print(lmax_f, lmax_g, fdot_xx, gdot_xx, dfdoe_max, dgdoe_max)
 
     # compute D1, D2, D3
     d_raw, psi = fun_lyapunov_control(

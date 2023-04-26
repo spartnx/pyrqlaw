@@ -7,7 +7,7 @@ sys.path.append("../")
 import pyrqlaw
 
 
-def scenario(eT, wl, wscl, fig_display=True, fig_save=True):
+def scenario(eT, wl, wscl, woe=[10, 1, 1, 1, 1], fig_display=True, fig_save=True):
     # start measuring time
     start = time.time()
 
@@ -52,19 +52,19 @@ def scenario(eT, wl, wscl, fig_display=True, fig_save=True):
     mdot = thrust/(g0*isp) # mass flow rate, kg/s
 
     # Integration parameters
-    tf_max = 20 * (24*3600) # max time of flight, s
+    tf_max = 100 * (24*3600) # max time of flight, s
     t_step = 0.001 # integration step, non-dimensional
 
     # RQ-Law parameters common to both stages
     rpmin = DU
     l_mesh = 100
     t_mesh = 20
-    tol_oe = [1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 1e-2]
+    tol_oe = [1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 1e-3]
 
     # RQ-Law parameters: Stage 2 (phasing - matching chaser's and target's positions)
     k_petro2 = 100 # Penalty function parameter
     wp2 = 1 # Penalty function weight
-    woe2 = [10, 1, 1, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
+    woe2 = woe # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
     m_petro2 = 3 # For weight function Sa associated with sma
     n_petro2 = 4 # For weight function Sa associated with sma
     r_petro2 = 2 # For weight function Sa associated with sma
@@ -131,9 +131,9 @@ def scenario(eT, wl, wscl, fig_display=True, fig_save=True):
     fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
 
     if fig_save:
-        fig1.savefig(f"../plots/rendezvous_with_coasting/Elements history (stage 2) - eT {eT}")
-        fig2.savefig(f"../plots/rendezvous_with_coasting/Trajectory (stage 2) - eT {eT}")
-        fig3.savefig(f"../plots/rendezvous_with_coasting/Controls history (stage 2) - eT {eT}")
+        fig1.savefig(f"../plots/target_orbit_eccentricity/Elements history (stage 2) - eT {int(eT*1000)}")
+        fig2.savefig(f"../plots/target_orbit_eccentricity/Trajectory (stage 2) - eT {int(eT*1000)}")
+        fig3.savefig(f"../plots/target_orbit_eccentricity/Controls history (stage 2) - eT {int(eT*1000)}")
     if fig_display:
         plt.show()
     #############################
@@ -152,21 +152,35 @@ if __name__ == "__main__":
     # Compare the figures with Figure 10 in Narayanaswamy and Damaren 
     # (Equinoctial Lyapunov Control Law for Low-Thrust Rendezvous)
     eT = 0.7
-    wl = 0.0659
+    wl = 0.2
     wscl = 3.2053
-    scenario(eT, wl, wscl, fig_display=True, fig_save=False)
+    woe = [15, 5, 5, 1, 1]
+    scenario(eT, wl, wscl, woe=woe, fig_display=True, fig_save=False)
 
     # Outputs to be compared with Figure 11 in Narayanaswamy and Damaren 
     # (Equinoctial Lyapunov Control Law for Low-Thrust Rendezvous)
-    eT = [0.001, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
-    Wl = [0.0594, 0.0621, 0.0661, 0.0548, 0.0702, 0.1123, 0.0661, 0.0659]
-    Wscl = [3.623, 3.6952, 3.3714, 5.4849, 3.6663, 1.9891, 3.5557, 3.2053]
+    eT = [0.001, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    Wl = [0.0594, 0.0621, 0.0621, 0.0661, 0.0548, 0.0702, 0.1123, 0.1, 0.2]
+    Wscl = [3.623, 3.6952, 3.6952, 3.3714, 5.4849, 3.6663, 1.9891, 3.5557, 3.2053]
+    Woe = [[10, 5, 5, 1, 1],
+           [10, 5, 5, 1, 1],
+           [10, 1, 1, 1, 1],
+           [10, 1, 1, 1, 1],
+           [10, 1, 1, 1, 1],
+           [10, 1, 1, 1, 1],
+           [10, 1, 1, 1, 1],
+           [15, 5, 5, 1, 1],
+           [15, 5, 5, 1, 1]]
     end_masses = []
     mass_deltas = []
     tofs = []
     exitcodes = []
-    for j in range(8):
-        end_mass, mass_delta, tof, exitcode = scenario(eT[j], Wl[j], Wscl[j], fig_display=True, fig_save=True)
+    for j in range(len(eT)):
+        end_mass, mass_delta, tof, exitcode = scenario(eT[j], Wl[j], Wscl[j], woe=Woe[j], fig_display=False, fig_save=True)
+        end_masses.append(end_mass)
+        mass_deltas.append(mass_delta)
+        tofs.append(tof)
+        exitcodes.append(exitcode)
     print(eT)
     print(Wl)
     print(Wscl)
