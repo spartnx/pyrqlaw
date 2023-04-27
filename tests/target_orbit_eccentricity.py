@@ -103,8 +103,7 @@ def scenario(eT, wl, wscl, woe=[10, 1, 1, 1, 1], fig_display=True, fig_save=True
                     wp2=wp2,
                     l_mesh=l_mesh, t_mesh=t_mesh,
                     verbosity=2,
-                    tol_oe=tol_oe,
-                    standalone_stage2=True
+                    tol_oe=tol_oe
                     )
     prob.set_problem(
                     oe0, oeT, 
@@ -152,9 +151,13 @@ if __name__ == "__main__":
     # Compare the figures with Figure 10 in Narayanaswamy and Damaren 
     # (Equinoctial Lyapunov Control Law for Low-Thrust Rendezvous)
     eT = 0.7
-    wl = 0.2
-    wscl = 3.2053
-    woe = [15, 5, 5, 1, 1]
+    wl = 0.209375
+    wscl = 3.22762143
+    woe = [15.11160714,
+           5.03348214,
+           8.64955357,
+           1.00669643,
+           1.28794643]
     scenario(eT, wl, wscl, woe=woe, fig_display=True, fig_save=False)
 
     # Outputs to be compared with Figure 11 in Narayanaswamy and Damaren 

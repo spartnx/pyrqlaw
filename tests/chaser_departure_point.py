@@ -115,13 +115,15 @@ def scenario(ta0, fig_display=True, fig_save=True):
     prob.set_problem(
                     oe0, oeT, 
                     mass0, thrust, mdot, tf_max, t_step, 
-                    woe1=woe1, woe2=woe2, wl=wl2, wscl=wscl2
+                    woe1=woe1, woe2=woe2, wl=wl2, wscl=wscl2,
+                    eta_r=eta_r1,
+                    standalone_stage2=False
                 )
     prob.pretty_settings()
     prob.pretty()
 
     # Solve the problem
-    prob.solve_stage1(eta_r=eta_r1)
+    prob.solve_stage1()
     prob.solve_stage2()
     prob.pretty_results() 
 

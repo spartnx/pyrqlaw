@@ -70,8 +70,7 @@ class RQLaw:
         verbosity=1,
         print_frequency=200,
         abs_tol=1e-7,
-        rel_tol=1e-9,
-        standalone_stage2=False
+        rel_tol=1e-9
     ):
         """Construct RQLaw object"""
         # dynamics
@@ -94,7 +93,6 @@ class RQLaw:
 
         # settings
         self.verbosity = verbosity
-        self.standalone_stage2 = standalone_stage2
 
         # tolerance for convergence on orbital elements
         if tol_oe is None:
@@ -184,7 +182,9 @@ class RQLaw:
         wl=0.06609, 
         wscl=3.3697,
         convergence_fcn_1=None,
-        convergence_fcn_2=None
+        convergence_fcn_2=None,
+        eta_r=0.0,
+        standalone_stage2=True
     ):
         """Set transfer problem
         
@@ -202,6 +202,9 @@ class RQLaw:
         assert len(oe0)==6, "oe0 must have 6 components"
         assert mass_min >= 1e-2, "mass should be above 0.01 to avoid numerical difficulties"
         assert len(oeT)==6, "oeT must have 6 components"
+        # Stage 1 relative effectivity threshold
+        self.eta_r = eta_r
+
         # Stage 1 weight parameters
         if woe1 is None:
             self.woe1 = np.array([2, 50, 50, 1, 1])
@@ -232,6 +235,9 @@ class RQLaw:
         self.mass_min = mass_min
         self.ready = True  # toggle
 
+        # Record whether to solve stage 2 alone
+        self.standalone_stage2 = standalone_stage2
+
         # Set convergence functions
         if convergence_fcn_1 == None:
             self.convergence_fcn_1 = ["oe", "q"]
@@ -240,7 +246,7 @@ class RQLaw:
         return
 
 
-    def solve_stage1(self, eta_r=0.0):
+    def solve_stage1(self, weights=[], tune_bounds=[]):
         """Propagate and solve control problem for stage 1 (orbital transfer)
         ws = wscl = 0
         eta_r >= 0
@@ -250,8 +256,9 @@ class RQLaw:
         """
         assert self.ready == True, "Please first call `set_problem()`"
 
-        # efficiency thresholds
-        self.eta_r = eta_r
+        # For tuning
+        if weights != []:
+            self.woe1 = weights * tune_bounds
 
         # initialize values for propagation
         t_iter = 0.0
@@ -339,10 +346,6 @@ class RQLaw:
                         t_iter, oe_iter, oeT_iter, accel_thrust
                     )
                     val_eta_r = (qdot_current - qdot_max)/(qdot_min - qdot_max)
-                    # print("val_eta_r = " + str(val_eta_r))
-                    # print("qdot_current = " + str(qdot_current))
-                    # print("qdot_min = " + str(qdot_max))
-                    # print("qdot_max = " + str(qdot_min))
                     # turn thrust off if below threshold
                     if val_eta_r < self.eta_r:
                         throttle = 0  # turn off
@@ -417,7 +420,7 @@ class RQLaw:
         else:
             if self.verbosity > 0:
                 print("Target elements successfully reached!")
-        return
+        return t_iter
 
     
     def evaluate_osculating_qdot(self, t0, oe, oeT, accel_thrust):
@@ -503,7 +506,7 @@ class RQLaw:
     def check_doe_stage2(self):
         return check_convergence_oe(self.oe0, self.oeT, self.woe2, self.wl2, self.tol_oe)
 
-    def solve_stage2(self):
+    def solve_stage2(self, weights=[], tune_bounds=[]):
         """Propagate and solve control problem for stage 2 (phasing)
         ws, wscl > 0
         eta_r = 0
@@ -513,19 +516,26 @@ class RQLaw:
         """
         assert self.ready == True, "Please first call `set_problem()`"
 
+        # For tuning
+        if weights != []:
+            self.exitcode = 0
+            self.woe2 = weights[:5] * tune_bounds[:5]
+            self.wl2 = weights[5] * tune_bounds[5] 
+            self.wscl2 = weights[6] * tune_bounds[6] 
+
         self.converge = False
 
         # initialize values for propagation
-        if self.standalone_stage2 == False:
-            t_iter = self.times1[-1]
-            oe_iter = self.states1[-1]
-            oeT_iter = self.statesT1[-1]
-            mass_iter = self.masses[-1]
-        else:
+        if self.standalone_stage2 == True:
             t_iter = 0.0
             oe_iter = self.oe0
             oeT_iter = self.oeT
             mass_iter = self.mass0
+        else:
+            t_iter = self.times1[-1]
+            oe_iter = self.states1[-1]
+            oeT_iter = self.statesT1[-1]
+            mass_iter = self.masses[-1]
 
         # initialize storage
         n_nan_angles = 0
@@ -533,10 +543,11 @@ class RQLaw:
         self.statesT2 = [oeT_iter,]
         self.times2 = [t_iter,]
         self.masses2 = [mass_iter,]
-        if self.standalone_stage2 == False:
-            self.controls2 = [self.controls[-1],]
-        else:
+        if self.standalone_stage2 == True:
             self.controls2 = []
+        else:
+            self.controls2 = [self.controls[-1],]
+            
         
         if self.verbosity >= 2:
             header = "Stage 2:   iter |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |  del6       |"
@@ -653,18 +664,18 @@ class RQLaw:
             idx += 1
 
         # Update storage over full timeline (stage 1 and stage 2)
-        if self.standalone_stage2 == False:
-            self.states += self.states2
-            self.statesT += self.statesT2
-            self.times += self.times2
-            self.controls += self.controls2
-            self.masses += self.masses2
-        else:
+        if self.standalone_stage2 == True:
             self.states = copy.deepcopy(self.states2)
             self.statesT = copy.deepcopy(self.statesT2)
             self.times = copy.deepcopy(self.times2)
             self.controls = copy.deepcopy(self.controls2)
             self.masses = copy.deepcopy(self.masses2)
+        else:
+            self.states += self.states2
+            self.statesT += self.statesT2
+            self.times += self.times2
+            self.controls += self.controls2
+            self.masses += self.masses2
 
         if self.converge == False:
             if self.verbosity > 0:
@@ -673,7 +684,7 @@ class RQLaw:
         else:
             if self.verbosity > 0:
                 print("Target elements successfully reached!")
-        return
+        return t_iter
 
     def eval_deltaL(self, l, lT):
         """Bring l - lT from [-2pi, 2pi) to [-pi,pi)"""
@@ -757,12 +768,12 @@ class RQLaw:
             controls = self.controls1
             times = np.array(self.times1)[0:-1] * time_scale
         else: 
-            if self.standalone_stage2 == False:
-                controls = self.controls2
-                times = np.array(self.times2) * time_scale
-            else:
+            if self.standalone_stage2 == True:
                 controls = self.controls2
                 times = np.array(self.times2)[0:-1] * time_scale
+            else:
+                controls = self.controls2
+                times = np.array(self.times2) * time_scale
         alphas, betas, throttles = [], [], []
         for ctl in controls:
             alphas.append(ctl[0])
@@ -950,3 +961,5 @@ class RQLaw:
         print(f"Integrator    : {self.integrator_str}")
         print(f"Tolerance     : {self.tol_oe}")
         return
+
+    
