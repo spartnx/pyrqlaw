@@ -1,18 +1,22 @@
 # pyrqlaw
-RQ-law feedback control for low-thrust orbital transfer and rendezvous in Python. Adapted from [pyqlaw](https://github.com/Yuricst/pyqlaw) by [Yuricst](https://github.com/Yuricst).
+RQ-law feedback control for low-thrust orbital transfer and rendezvous in Python. Adapted from [pyqlaw](https://github.com/Yuricst/pyqlaw) by [Yuricst](https://github.com/Yuricst). Utility functions are available to tune the RQ-Law algorithm in cases when it cannot converge.
 
 ### Dependencies
 
-- `sympy`, `numpy`, `matplotilb`, `numba`
+- `sympy`, `numpy`, `matplotilb`, `numba`, `pygmo`
 
-### Basic usage
-
-Test files are included in `./tests/`. Here, we present a basic example whose complete code can be found in `./tests/rendezvous_with_coasting.py`. Before starting, please note a couple of things:
-
+### Important notes
 - Dynamics & spacecraft parameters are given in non-dimensional quantities, scaling `GM = 1.0` (which may be modified, but it is numerically desirable to use this scaling). 
 - All angles are defined in radians.
 - The RQ-Law formulation presents singularities when the eccentricity of the chaser's orbit is equal to 0 or 1 or its inclination is 180 degrees. Thus, initial circular orbits for either the target or chaser must be defined with small eccentricities on the order of 1e-3 and not 0. Similarly, retrograde orbits must be defined with inclinations slightly less than 180 degrees.
 - A rendezvous maneuver is performed in two stages. Stage 1 is the orbital transfer aiming to match the chaser and target's slow elements (i.e., semi-major axis, eccentricity, inclination, RAAN, argument of periapse). Stage 2 is the phasing matching the position of the chaser and target after the chaser reaches the target's orbit at the end of stage 1. 
+- the RQ-Law algorithm implemented in `pyrqlaw` natively converts the classical elements into the Modified Equinoctial Elements with the semi-latus rectum replaced with the semi-major axis.
+
+### Basic usage
+
+Examples are included in `./examples/`. Example `1_` gives a template on how to use `pyrqlaw` on the full trajectory (stage 1 + stage 2), the orbital transfer (stage 1) only, and the phasing (stage 2) only. The example is, hopefully, self explanatory and can be used as is with user-defined inputs such as the initial orbital elements of the chaser and targets. Examples `2_`, `3_`, and `5_` are examples inspired from Narayanaswamy & Damaren (2023) [4]. Examples `7_` and `8_` are examples involving rendezvous in geosynchronous orbits. Finally, examples `4_` and `6_` demonstrate the use of utility functions tuning the algorithm in highly eccentric and inclined orbits and in the GEO regime, respectively.
+
+Here, we present a basic example whose complete code can be found in `./examples/3_rendezvous_with_coasting.py`. Before starting, please note a couple of things:
 
 We start by importing the module
 
@@ -22,19 +26,18 @@ We start by importing the module
 import pyrqlaw
 ```
 
-Define the initial keplerian elements of the chaser and target, along with weighting. Stage 2 needs two additional weights compared to Stage 1. (The keplerian elements must be converted to the Modified Equinoctial Elements with the semi-latus rectum replaced with the semi-major axis before creating an RQLaw object.)
+Define the initial keplerian elements of the chaser and target, along with weighting. Stage 2 needs two additional weights compared to Stage 1. 
 
 ```python
-# initial and final elements (always in order: [SMA, ECC, INC, RAAN, AOP, TA])
-oe0 = np.array([1.03, 0.2, 0, 0, 0, np.pi])
-oeT = np.array([1.05, 1e-3, , np.pi/2, np.pi/2, np.pi/2, np.pi/2])
+# Chaser's and target's initial orbital elements (always in order: [SMA, ECC, INC, RAAN, AOP, TA])
+oeC = [1.03, 0.2, 0, 0, 0, np.pi]
+oeT = [1.05, 1e-3, , np.pi/2, np.pi/2, np.pi/2, np.pi/2]
 woe1 = [2, 50, 50, 1, 1] # Stage 1 weights
 woe2 = [10, 1, 1, 1, 1] # Stage 2 weights (set 1)
-wl = 0.06609 # Stage 2 weights (set 2)
-wscl = 3.3697 # Stage 2 weights (set 2)
+wl, wscl = 0.06609, 3.3697 # Stage 2 weights (set 2)
 ```
 
-Provide spacecraft parameters (max thrust and mass-flow rate), max transfer time, the relative effectivity tolerance for Stage 1, and initial time step for integration. (By default, the algorithm uses a Dormand-Prince 5(4) integration scheme).
+Provide spacecraft parameters (max thrust and mass-flow rate), max transfer time, the relative effectivity tolerance for Stage 1, and initial time step for integration. (By default, the algorithm uses a Dormand-Prince 5(4) integration scheme.)
 
 ```python
 # spacecraft parameters
@@ -50,7 +53,7 @@ Construct the problem object, then set the problem parameters
 
 ```python
 prob = pyrqlaw.RQLaw()
-prob.set_problem(oe0, oeT, mass0, thrust, mdot, tf_max, t_step, woe1=woe1, wo2=wo2, wl=wl, wscl=wscl)
+prob.set_problem(oe0, oeT, mass0, thrust, mdot, tf_max, t_step, woe1=woe1, woe2=woe2, wl=wl, wscl=wscl, eta_r=eta_r)
 prob.pretty()  # print info
 ```
 
@@ -66,7 +69,7 @@ Stage 1 orbital transfer:
 Solve the problem
 
 ```python
-prob.solve_stage1(eta_r=eta_r)
+prob.solve_stage1())
 prob.solve_stage2()
 prob.pretty_results()   # print info
 ```
@@ -114,7 +117,7 @@ Stage 2 trajectory
 
 ### Some things to be careful!
 
-- The `pyrqlaw` implementation was compared to the case studies presented in Ref. 4 which proposed the RQ-Law. For some of the examples, the outputs of pyrqlaw don't quite match the results from Ref. 4. For example, pyrqlaw for now struggles to converge to the target's position in highly elliptical orbits.
+- The `pyrqlaw` implementation was compared to the case studies presented in [4] which proposed the RQ-Law. For some of the examples, the outputs of pyrqlaw don't quite match the results from Ref. 4, likely because of differences between the `pyrqlaw` implementation and the authors' implementation. More work will be done towards addressing this mismatch in the future.
 
 
 ### References
@@ -125,6 +128,6 @@ Stage 2 trajectory
 
 [3] Petropoulos, A. E. (2005). Refinements to the Q-law for low-thrust orbit transfers. Advances in the Astronautical Sciences, 120(I), 963–982.
 
-[4] Navayanaswamy, S., & Damaren, C. J. (2023). Equinoctial Lyapunov Control Law for Low-Thrust Rendezvous. Journal of Guidance, Control, and Dynamics, Vol. 46, No. 4. https://doi.org/10.2514/1.G006662
+[4] Narayanaswamy, S., & Damaren, C. J. (2023). Equinoctial Lyapunov Control Law for Low-Thrust Rendezvous. Journal of Guidance, Control, and Dynamics, Vol. 46, No. 4. https://doi.org/10.2514/1.G006662
 
 [5] [Modified Equinoctial Elements](https://spsweb.fltops.jpl.nasa.gov/portaldataops/mpg/MPG_Docs/Source%20Docs/EquinoctalElements-modified.pdf)
