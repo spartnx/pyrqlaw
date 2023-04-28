@@ -10,15 +10,15 @@ RQ-law feedback control for low-thrust orbital transfer and rendezvous in Python
 - All angles are defined in radians.
 - The RQ-Law formulation presents singularities when the eccentricity of the chaser's orbit is equal to 0 or 1 or its inclination is 180 degrees. Thus, initial circular orbits for either the target or chaser must be defined with small eccentricities on the order of 1e-3 and not 0. Similarly, retrograde orbits must be defined with inclinations slightly less than 180 degrees.
 - A rendezvous maneuver is performed in two stages. Stage 1 is the orbital transfer aiming to match the chaser and target's slow elements (i.e., semi-major axis, eccentricity, inclination, RAAN, argument of periapse). Stage 2 is the phasing matching the position of the chaser and target after the chaser reaches the target's orbit at the end of stage 1. 
-- the RQ-Law algorithm implemented in `pyrqlaw` natively converts the classical elements into the Modified Equinoctial Elements with the semi-latus rectum replaced with the semi-major axis.
+- The RQ-Law algorithm implemented in `pyrqlaw` natively converts the classical elements into the Modified Equinoctial Elements with the semi-latus rectum replaced with the semi-major axis.
 
 ### Basic usage
 
 Examples are included in `./examples/`. Example `1_` gives a template on how to use `pyrqlaw` on the full trajectory (stage 1 + stage 2), the orbital transfer (stage 1) only, and the phasing (stage 2) only. The example is, hopefully, self explanatory and can be used as is with user-defined inputs such as the initial orbital elements of the chaser and targets. Examples `2_`, `3_`, and `5_` are examples inspired from Narayanaswamy & Damaren (2023) [4]. Examples `7_` and `8_` are examples involving rendezvous in geosynchronous orbits. Finally, examples `4_` and `6_` demonstrate the use of utility functions tuning the algorithm in highly eccentric and inclined orbits and in the GEO regime, respectively.
 
-Here, we present a basic example whose complete code can be found in `./examples/3_rendezvous_with_coasting.py`. Before starting, please note a couple of things:
+Here, we present a basic example whose complete code can be found in `./examples/3_rendezvous_with_coasting.py`. 
 
-We start by importing the module
+We first start by importing the module
 
 ```python
 #import sys
@@ -69,7 +69,7 @@ Stage 1 orbital transfer:
 Solve the problem
 
 ```python
-prob.solve_stage1())
+prob.solve_stage1()
 prob.solve_stage2()
 prob.pretty_results()   # print info
 ```
@@ -108,7 +108,7 @@ Stage 2 Keplerian elements (blue = chaser's; red = target's)
   <img src="./plots//rendezvous_with_coasting//Elements history (stage 2).png" width="400" title="transfer">
 </p>
 
-Stage 2 trajectory
+Stage 2 trajectory (note that the yellow nad black dots are at the same location)
 <p align="center">
   <img src="./plots//rendezvous_with_coasting//Trajectory (stage 2).png" width="400" title="transfer">
 </p>
@@ -117,7 +117,7 @@ Stage 2 trajectory
 
 ### Some things to be careful!
 
-- The `pyrqlaw` implementation was compared to the case studies presented in [4] which proposed the RQ-Law. For some of the examples, the outputs of pyrqlaw don't quite match the results from Ref. 4, likely because of differences between the `pyrqlaw` implementation and the authors' implementation. More work will be done towards addressing this mismatch in the future.
+- The `pyrqlaw` implementation was compared to the case studies presented in [4] which proposed the RQ-Law. For some of the examples, the outputs of pyrqlaw don't quite match the results from [4], likely because of differences between the `pyrqlaw` implementation and the authors' implementation. More work will be done towards addressing this mismatch in the future.
 
 
 ### References
