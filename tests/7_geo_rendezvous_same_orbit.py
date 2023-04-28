@@ -78,6 +78,7 @@ def scenario(ta0, fig_display=True, fig_save=True):
     r_petro2 = 2 # For weight function Sa associated with sma
     wl2 = 0.17370297 # amplitude weight in augmented target sma - automatically set to 0 in stage 1
     wscl2 = 2.26701138 # frequency weight in augmented target sma - automatically set to 0 in stage 1
+    standalone_stage2 = True
     #########################
 
     #################################
@@ -92,16 +93,16 @@ def scenario(ta0, fig_display=True, fig_save=True):
     mdot /= (mass0/TU)
     mass0 /= MU
     mu = 1
-
-    # Convert keplerian elements into Modified Equinoctial Elements with sma
-    oe0 = pyrqlaw.kep2mee_with_a(np.array([sma_C, ecc_C, inc_C, raan_C, aop_C, ta_C]))
-    oeT = pyrqlaw.kep2mee_with_a(np.array([sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T])) 
     #################################
 
     #############################
     ######  SOLVE PROBLEM  ######
     #############################
-    # Construct the problem object -> this only solves Stage 1 for now...
+    # Chaser's initial orbital elements
+    oeC = [sma_C, ecc_C, inc_C, raan_C, aop_C, ta_C] 
+    # Target's initial orbital elements
+    oeT = [sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T]
+    # Instantiate RQLaw object
     prob = pyrqlaw.RQLaw(
                     mu=mu, rpmin=rpmin, 
                     k_petro1=k_petro1, k_petro2=k_petro2,
@@ -112,16 +113,18 @@ def scenario(ta0, fig_display=True, fig_save=True):
                     l_mesh=l_mesh, t_mesh=t_mesh,
                     verbosity=2
                     )
+    # Define problem
     prob.set_problem(
-                    oe0, oeT, 
+                    oeC, oeT, 
                     mass0, thrust, mdot, tf_max, t_step, 
-                    woe1=woe1, woe2=woe2, wl=wl2, wscl=wscl2
+                    woe1=woe1, woe2=woe2, wl=wl2, wscl=wscl2,
+                    eta_r=eta_r1,
+                    standalone_stage2=standalone_stage2
                 )
     prob.pretty_settings()
     prob.pretty()
 
     # Solve the problem
-    # prob.solve_stage1(eta_r=eta_r1)
     prob.solve_stage2()
     prob.pretty_results() 
 
@@ -131,32 +134,13 @@ def scenario(ta0, fig_display=True, fig_save=True):
     #############################
     ######  PLOT RESULTS  #######
     #############################
-    # # Using states over Stage 1 and Stage 2
-    # fig11, ax11 = prob.plot_elements_history(to_keplerian=True, 
-    #                                         time_scale=TU/(24*3600), distance_scale=DU/1000, 
-    #                                         time_unit="days", distance_unit="km", to_plot=0)
-    # fig21, ax21 = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=0)
-    # fig31, ax31 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=0)
-    # # Using states over Stage 1 only
-    # fig12, ax12 = prob.plot_elements_history(to_keplerian=True, 
-    #                                         time_scale=TU/(24*3600), distance_scale=DU/1000, 
-    #                                         time_unit="days", distance_unit="km", to_plot=1)
-    # fig22, ax22 = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=1)
-    # fig32, ax32 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=1)
-    # Using states over Stage 2 only
-    fig13, ax13 = prob.plot_elements_history(to_keplerian=True, 
+    fig13, _ = prob.plot_elements_history(to_keplerian=True, 
                                             time_scale=TU/(24*3600), distance_scale=DU/1000, 
                                             time_unit="days", distance_unit="km", to_plot=2)
-    fig23, ax23 = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=2)
-    fig33, ax33 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
+    fig23, _ = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=2)
+    fig33, _ = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
 
     if fig_save:
-        # fig11.savefig(f"../plots/geo_rendezvous_same_orbit/Elements history (stages 1, 2) - ta0 {int(np.degrees(ta0))}")
-        # fig21.savefig(f"../plots/geo_rendezvous_same_orbit/Trajectory (stages 1, 2) - ta0 {int(np.degrees(ta0))}")
-        # fig31.savefig(f"../plots/geo_rendezvous_same_orbit/Controls history (stages 1, 2) - ta0 {int(np.degrees(ta0))}")
-        # fig12.savefig(f"../plots/geo_rendezvous_same_orbit/Elements history (stage 1) - ta0 {int(np.degrees(ta0))}")
-        # fig22.savefig(f"../plots/geo_rendezvous_same_orbit/Trajectory (stage 1) - ta0 {int(np.degrees(ta0))}")
-        # fig32.savefig(f"../plots/geo_rendezvous_same_orbit/Controls history (stage 1) - ta0 {int(np.degrees(ta0))}")
         fig13.savefig(f"../plots/geo_rendezvous_same_orbit/Elements history (stage 2) - ta0 {int(np.degrees(ta0))}")
         fig23.savefig(f"../plots/geo_rendezvous_same_orbit/Trajectory (stage 2) - ta0 {int(np.degrees(ta0))}")
         fig33.savefig(f"../plots/geo_rendezvous_same_orbit/Controls history (stage 2) - ta0 {int(np.degrees(ta0))}")

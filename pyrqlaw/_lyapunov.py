@@ -38,15 +38,16 @@ def lyapunov_control_angles(
         oe (np.array): current osculating elements
         oeT (np.array): target osculating elements
         rpmin (float): minimum periapsis
+        m_petro (float): scalar factor m to prevent non-convergence
+        n_petro (float): scalar factor n to prevent non-convergence
+        r_petro (float): scalar factor r to prevent non-convergence
         k_petro (float): scalar factor k on minimum periapsis
-        m_petro (float): scalar factor m to prevent non-convergence, default is 3.0
-        n_petro (float): scalar factor n to prevent non-convergence, default is 4.0
-        r_petro (float): scalar factor r to prevent non-convergence, default is 2.0
-        wp (float): penalty scalar on minimum periapsis, default is 1.0
+        wp (float): penalty scalar on minimum periapsis
         woe (np.array): weight on each osculating element
         l_mesh (float): number of points for the mesh in true longitude
         wl (float): amplitude weight in Sa
         wscl (float): frequency weight in Sa
+        deltaL (float): difference in true longitude wrapped to [-pi,pi]
     
     Returns:
         (tuple): alpha, beta, vector u, list of columns of psi
@@ -57,7 +58,6 @@ def lyapunov_control_angles(
     gdot_xx = fun_eval_gdot(mu, accel, np.concatenate((oe_5,[lmax_g])))
     dfdoe_max = fun_eval_dfdoe(mu, accel, np.concatenate((oe_5,[lmax_f])))
     dgdoe_max = fun_eval_dgdoe(mu, accel, np.concatenate((oe_5,[lmax_g])))
-    # print(lmax_f, lmax_g, fdot_xx, gdot_xx, dfdoe_max, dgdoe_max)
 
     # compute D1, D2, D3
     d_raw, psi = fun_lyapunov_control(
@@ -79,7 +79,7 @@ def lyapunov_control_angles(
     )
 
     # compute thrust angles
-    d_float = np.array([float(el) for el in d_raw]) # D2, D1, D3 
+    d_float = np.array([float(el) for el in d_raw]) # D2, D1, D3 (in this order!)
     d_float_norm = np.sqrt( d_float[0]**2 + d_float[1]**2 + d_float[2]**2 )
     d = d_float/d_float_norm
 
@@ -93,7 +93,9 @@ def eval_lmax(mu,
               fun_eval_fdot, 
               fun_eval_gdot, 
               l_mesh=100):
-    l_range = np.linspace(0,2*np.pi,num=l_mesh,endpoint=False)
+    """Evaluate the time derivatives of equinoctial elements f and g over a range of true longitudes
+    and retrieve the max and min and corresponding true longitudes"""
+    l_range = np.linspace(0, 2*np.pi, num=l_mesh, endpoint=False)
     oe_5 = oe[:5] # a, f, g, h, k
 
     # evaluate the maximizer of fdot_x for L in [0,2pi)

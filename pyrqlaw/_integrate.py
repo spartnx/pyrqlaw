@@ -47,7 +47,7 @@ def integrate_next_step(integrator, eom,
                         ode_params, ode_paramsT, 
                         abs_tol, rel_tol, 
                     ):
-    """Propagate chaser's and target's emos over the next step"""
+    """Propagate chaser's and target's eoms over the next step"""
     # Propagate chaser's state
     oe_next, h_next = integrator(
         eom, 
@@ -156,9 +156,4 @@ def dopri5(rhs, t, h, y, p, abs_tol=1e-7, rel_tol=1e-9):
         h_next = h*(0.38*np.sqrt(6)/error)**(1/5)
     else:
         h_next = h
-    # if np.linalg.norm(p[1]) == 0:
-    #     if error == 0:
-    #         print("u = 0 and error = 0")
-    #     else:
-    #         print("u = 0 and error != 0")
     return y_next, h_next

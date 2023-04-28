@@ -9,7 +9,7 @@ from ._elements import mee_with_a2sv
 
 @njit
 def check_convergence_oe(oe, oeT, woe, wl, tol_oe, deltaL=0):
-    """Stage 1 convergence: check convergence between oe[:5] and oeT[:5]"""
+    """Stage 1 convergence: check convergence between oe and oeT"""
     check_array = np.zeros(6,)
     doe = np.abs(oeT - oe)  # FIXME is this ok? or should we be careful for angles?
     # check convergence for each slow element: a, f, g, h, k
@@ -35,6 +35,8 @@ def check_convergence_oe(oe, oeT, woe, wl, tol_oe, deltaL=0):
         return False
 
 def check_convergence_sv(oe, oeT, tol_sv, mu):
+    """Check convergence between the chaser's and target's 
+    orbital state vectors (position and velocity)"""
     # convert elements to state vector [r,v]
     sv = mee_with_a2sv(oe, mu)
     svT = mee_with_a2sv(oeT, mu)
@@ -54,6 +56,7 @@ def check_convergence_q(tol_q, eval_q, eval_lmax, eval_fdot, eval_gdot, eval_dfd
                         mu, accel_thrust, oe_iter, oeT_iter, 
                         rpmin, m_petro1, n_petro1, r_petro1,
                         k_petro1, wp1, woe1, wl1, wscl1, l_mesh, deltaL=0):
+    """Check convergence of the Lyapunov function to below some tolerance."""
     lmax_f, lmax_g = eval_lmax(mu, accel_thrust, oe_iter, eval_fdot, eval_gdot, l_mesh=l_mesh)
     fdot_xx = eval_fdot(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_f])))
     gdot_xx = eval_gdot(mu, accel_thrust, np.concatenate((oe_iter[:5],[lmax_g])))

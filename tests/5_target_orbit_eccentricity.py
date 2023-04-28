@@ -59,7 +59,6 @@ def scenario(eT, wl, wscl, woe=[10, 1, 1, 1, 1], fig_display=True, fig_save=True
     rpmin = DU
     l_mesh = 100
     t_mesh = 20
-    tol_oe = [1e-3, 1e-3, 1e-3, 1e-3, 1e-3, 1e-3]
 
     # RQ-Law parameters: Stage 2 (phasing - matching chaser's and target's positions)
     k_petro2 = 100 # Penalty function parameter
@@ -70,6 +69,7 @@ def scenario(eT, wl, wscl, woe=[10, 1, 1, 1, 1], fig_display=True, fig_save=True
     r_petro2 = 2 # For weight function Sa associated with sma
     wl2 = wl # amplitude weight in augmented target sma - automatically set to 0 in stage 1
     wscl2 = wscl # frequency weight in augmented target sma - automatically set to 0 in stage 1
+    standalone_stage2 = True
     #########################
 
     #################################
@@ -84,16 +84,16 @@ def scenario(eT, wl, wscl, woe=[10, 1, 1, 1, 1], fig_display=True, fig_save=True
     mdot /= (mass0/TU)
     mass0 /= MU
     mu = 1
-
-    # Convert keplerian elements into Modified Equinoctial Elements with sma
-    oe0 = pyrqlaw.kep2mee_with_a(np.array([sma_C, ecc_C, inc_C, raan_C, aop_C, ta_C]))
-    oeT = pyrqlaw.kep2mee_with_a(np.array([sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T])) 
     #################################
 
     #############################
     ######  SOLVE PROBLEM  ######
     #############################
-    # Construct the problem object -> this only solves Stage 1 for now...
+    # Chaser's initial orbital elements
+    oeC = [sma_C, ecc_C, inc_C, raan_C, aop_C, ta_C] 
+    # Target's initial orbital elements
+    oeT = [sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T]
+    # Instantiate RQLaw object
     prob = pyrqlaw.RQLaw(
                     mu=mu, rpmin=rpmin, 
                     k_petro2=k_petro2,
@@ -102,13 +102,14 @@ def scenario(eT, wl, wscl, woe=[10, 1, 1, 1, 1], fig_display=True, fig_save=True
                     r_petro2=r_petro2,
                     wp2=wp2,
                     l_mesh=l_mesh, t_mesh=t_mesh,
-                    verbosity=2,
-                    tol_oe=tol_oe
+                    verbosity=2
                     )
+    # Define problem
     prob.set_problem(
-                    oe0, oeT, 
+                    oeC, oeT, 
                     mass0, thrust, mdot, tf_max, t_step, 
-                    woe2=woe2, wl=wl2, wscl=wscl2
+                    woe2=woe2, wl=wl2, wscl=wscl2,
+                    standalone_stage2=standalone_stage2
                 )
     prob.pretty_settings()
 
@@ -123,11 +124,11 @@ def scenario(eT, wl, wscl, woe=[10, 1, 1, 1, 1], fig_display=True, fig_save=True
     ######  PLOT RESULTS  #######
     #############################
     # Using states over Stage 2 only
-    fig1, ax1 = prob.plot_elements_history(to_keplerian=True, 
+    fig1, _ = prob.plot_elements_history(to_keplerian=True, 
                                             time_scale=TU/(24*3600), distance_scale=DU/1000, 
                                             time_unit="days", distance_unit="km", to_plot=2)
-    fig2, ax2 = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=2)
-    fig3, ax3 = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
+    fig2, _ = prob.plot_trajectory_3d(sphere_radius=Re/DU, to_plot=2)
+    fig3, _ = prob.plot_controls(time_scale=TU/(24*3600), time_unit="days", to_plot=2)
 
     if fig_save:
         fig1.savefig(f"../plots/target_orbit_eccentricity/Elements history (stage 2) - eT {int(eT*1000)}")

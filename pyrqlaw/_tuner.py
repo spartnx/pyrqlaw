@@ -4,6 +4,7 @@ import numpy as np
 from ._convergence import check_convergence_oe
 
 class rqtof_udp:
+    """User-Defined Problem returning the time of flight of the trajectory."""
     def __init__(self, obj_fcn, stage, tune_bounds):
         self._fitness = obj_fcn
         self._stage = stage
@@ -25,19 +26,24 @@ class rqtof_udp:
 class RQLawTuner:
     def __init__(self, prob, stage="Stage 2", tune_bounds=[50]*5+[1,10]):
         """Object to tune RQ-Law algorithm on the 
-            given problem instance and stage"""
+            given problem instance and stage.
+            
+        Args:
+            prob (RQLaw): RQLaw instance
+            stage (str): stage of the maneuver over which to tune the algorithm
+            tune_bounds (list): bounds on the weights to tune
+        """
         self._prob = prob
         self._stage = stage
         self._tune_bounds = np.array(tune_bounds)
         self._obj_fcn = None
         self._x0_at_scale = None
-        self._x0 = None
-        self._x = None
+        self._x0 = None # nondimensional
         self._x_at_scale = None
+        self._x = None # nondimensional
         self._f = None
 
         # Check RQ-Law is worth tuning over the given stage
-        # assign value to self.obj_fcn and self._x0
         if stage == "Stage 1":
             run_tuning = not check_convergence_oe(self._prob.oe0, 
                                                     self._prob.oeT, 
@@ -65,7 +71,13 @@ class RQLawTuner:
         return
 
     def tune(self, pop_size=1, verbosity=1, solver="neldermead"):
-        """Tune the RQ-Law algo using the Nelder-Mead algorithm"""
+        """Tune the RQ-Law algo using the Nelder-Mead algorithm.
+        
+        Args:
+            pop_size (int): size of the population of chromosomes to evaluate in Pygmo
+            verbosity (int): solver's verbosity
+            solver (str): Pygmo solver
+        """
         # Define Pygmo problem
         opt_prob = pg.problem(udp=rqtof_udp(self._obj_fcn, self._stage, self._tune_bounds))
         print(opt_prob)
@@ -94,7 +106,13 @@ class RQLawTuner:
         return 
 
     def tune_parallel(self, pop_size=1, n_isl=4, verbosity=1): # Does not seem to be working as expected -> investigate
-        """Tune the RQ-Law algo using the Nelder-Mead algorithm in parallel"""
+        """Tune the RQ-Law algo using the Nelder-Mead algorithm in parallel.
+
+        Args:
+            pop_size (int): size of the population of chromosomes to evaluate in Pygmo
+            verbosity (int): solver's verbosity
+            n_isl (int): number of islands to parallelize optimization over
+        """
         # Define Pygmo problem
         opt_prob = pg.problem(udp=rqtof_udp(self._obj_fcn, self._stage, self._tune_bounds))
         print(opt_prob)

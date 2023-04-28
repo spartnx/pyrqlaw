@@ -23,19 +23,19 @@ def scenario():
     ######  INPUTS  ######
     ######################
     # Chaser's initial state (Keplerian elements)
-    sma_C = DU + 36e6 # semi-major axis, m
-    ecc_C = 1e-3 # eccentricity - can't be 0 nor 1 due to singularities in the RQ-Law formulation
-    inc_C = 0 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
-    raan_C = 0 # RAAN, rad
-    aop_C = 0 # argument of periapse, rad
+    sma_C = DU + 20e6 # semi-major axis, m
+    ecc_C = 0.7 # eccentricity - can't be 0 nor 1 due to singularities in the RQ-Law formulation
+    inc_C = np.pi/2 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
+    raan_C = np.pi/2 # RAAN, rad
+    aop_C = np.pi/2 # argument of periapse, rad
     ta_C = np.pi # true anomaly, rad
 
     # Target's initial state (Keplerian elements)
-    sma_T = DU + 37e6 # semi-major axis, m
-    ecc_T = np.radians(5) # eccentricity - can't be 0 nor 1 due to singularities in the RQ-Law formulation
-    inc_T = 0 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
-    raan_T = 0 # RAAN, rad
-    aop_T = 0 # argument of periapse, rad
+    sma_T = DU + 20e6 # semi-major axis, m
+    ecc_T = 0.7 # eccentricity - can't be 0 nor 1 due to singularities in the RQ-Law formulation
+    inc_T = np.pi/2 # inclination, rad - can't be pi due to singularities in the MEE (tan(inc/2) in h and k)
+    raan_T = np.pi/2 # RAAN, rad
+    aop_T = np.pi/2 # argument of periapse, rad
     ta_T = np.pi/2 # true anomaly, rad
 
     # spacecraft parameters
@@ -67,12 +67,13 @@ def scenario():
     # RQ-Law parameters: Stage 2 (phasing - matching chaser's and target's positions)
     k_petro2 = 100 # Penalty function parameter
     wp2 = 1 # Penalty function weight
-    woe2 = [23.54823751, 40.23722676, 5.69083197, 31.76804207, 43.3191163] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
+    woe2 = [15, 5, 5, 1, 1] # Lyapunov function weights, in terms of MEE with sma ([sma, f, g, h, k])
     m_petro2 = 3 # For weight function Sa associated with sma
     n_petro2 = 4 # For weight function Sa associated with sma
     r_petro2 = 2 # For weight function Sa associated with sma
-    wl2 = 0.17370297 # amplitude weight in augmented target sma - automatically set to 0 in stage 1
-    wscl2 = 2.26701138 # frequency weight in augmented target sma - automatically set to 0 in stage 1
+    wl2 = 0.2 # amplitude weight in augmented target sma - automatically set to 0 in stage 1
+    wscl2 = 3.2053 # frequency weight in augmented target sma - automatically set to 0 in stage 1
+    standalone_stage2 = True
     #########################
 
     #################################
@@ -87,16 +88,16 @@ def scenario():
     mdot /= (mass0/TU)
     mass0 /= MU
     mu = 1
-
-    # Convert keplerian elements into Modified Equinoctial Elements with sma
-    oe0 = pyrqlaw.kep2mee_with_a(np.array([sma_C, ecc_C, inc_C, raan_C, aop_C, ta_C]))
-    oeT = pyrqlaw.kep2mee_with_a(np.array([sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T])) 
     #################################
 
     #############################
     ######  SOLVE PROBLEM  ######
     #############################
-    # Construct the problem object -> this only solves Stage 1 for now...
+    # Chaser's initial orbital elements
+    oeC = [sma_C, ecc_C, inc_C, raan_C, aop_C, ta_C] 
+    # Target's initial orbital elements
+    oeT = [sma_T, ecc_T, inc_T, raan_T, aop_T, ta_T]
+    # Instantiate RQLaw object
     prob = pyrqlaw.RQLaw(
                     mu=mu, rpmin=rpmin, 
                     k_petro1=k_petro1, k_petro2=k_petro2,
@@ -105,13 +106,15 @@ def scenario():
                     r_petro1=r_petro1, r_petro2=r_petro2,
                     wp1=wp1, wp2=wp2,
                     l_mesh=l_mesh, t_mesh=t_mesh,
-                    verbosity=0
+                    verbosity=2
                     )
+    # Define problem
     prob.set_problem(
-                    oe0, oeT, 
+                    oeC, oeT, 
                     mass0, thrust, mdot, tf_max, t_step, 
-                    woe1=woe1, woe2=woe2, wl=wl2, wscl=wscl2, 
-                    eta_r=eta_r1
+                    woe1=woe1, woe2=woe2, wl=wl2, wscl=wscl2,
+                    eta_r=eta_r1,
+                    standalone_stage2=standalone_stage2
                 )
     prob.pretty_settings()
     prob.pretty()
@@ -123,15 +126,11 @@ if __name__ == "__main__":
     # Define the problem over which to fine tune the RQ-Law algorithm
     prob = scenario()
 
-    # Tune RQ-Law over stage 1
-    tuner = pyrqlaw.RQLawTuner(prob, stage="Stage 1", tune_bounds=[50]*5)
+    # Spawn an RQLawTuner object
+    # Specify the stage over which to fine tune RQ-Law
+    tuner = pyrqlaw.RQLawTuner(prob, stage="Stage 2", tune_bounds=[50]*5+[1,10])
     tuner.tune(pop_size=5, solver="de")
     tuner.pretty()
-
-    # # Tune RQ-Law over stage 2
-    # tuner = pyrqlaw.RQLawTuner(prob, stage="Stage 2", tune_bounds=[50]*5+[1,10])
-    # tuner.tune(pop_size=5, solver="de")
-    # tuner.pretty()
 
 
     

@@ -14,22 +14,23 @@ from ._convergence import (
     check_convergence_oe, check_convergence_sv, check_convergence_q, elements_safety
 )
 from ._elements import (
-    mee_with_a2sv, get_orbit_coordinates, mee_with_a2kep
+    mee_with_a2sv, get_orbit_coordinates, mee_with_a2kep, kep2mee_with_a
 )
 from ._plot_helper import plot_sphere_wireframe, set_equal_axis
 
 
 class RQLaw:
-    """Object for Q-law based transfer problem.
+    """Object for RQ-law based rendezvous problem.
     The overall procedure for using this class is:
     1. Create object via `prob = RQLaw()`
     2. Set problem parameters via `prob.set_problem()`
-    3. solve problem via `prob.solve()`
+    3. solve stage 1 via `prob.solve_stage1()`
+    4. solve stage 2 via `prob.solve_stage2()`
 
     Exitcodes:
     0 : initial value (problem not yet attempted)
     1 : stage 1 solved
-    2 : stage 1 and stage 2 solved
+    2 : stage 1 and stage 2 solved or stage 2 solved
     -1 : mass is below threshold
     -2 : target elements could not be reached within allocated time
     -3 : thrust angles from feedback control law is nan
@@ -37,18 +38,26 @@ class RQLaw:
     Args:
         mu (float): gravitational parameter, default is 1.0
         rpmin (float): minimum periapsis
-        k_petro (float): scalar factor k on minimum periapsis
-        m_petro (float): scalar factor m to prevent non-convergence, default is 3.0
-        n_petro (float): scalar factor n to prevent non-convergence, default is 4.0
-        r_petro (float): scalar factor r to prevent non-convergence, default is 2.0
-        wp (float): penalty scalar on minimum periapsis, default is 1.0
+        k_petro (float): scalar factor k on minimum periapsis (k_petro1: stage 1; k_petro2: stage 2)
+        m_petro (float): scalar factor m to prevent non-convergence (m_petro1: stage 1; m_petro2: stage 2)
+        n_petro (float): scalar factor n to prevent non-convergence (n_petro1: stage 1; n_petro2: stage 2)
+        r_petro (float): scalar factor r to prevent non-convergence (r_petro1: stage 1; r_petro2: stage 2)
+        wp (float): penalty scalar on minimum periapsis (wp1: stage 1; wp2: stage 2)
         integrator (str): "rk4", "rkf45", or "dopri5"
-        verbosity (int): verbosity level for Q-law
-        t_mesh (int): number of evaluation points along orbit for Q-law effectivity 
-        tol_oe (np.array or None): tolerance on 5 elements targeted
+        t_mesh (int): number of evaluation points along orbit to compute RQ-law effectivity 
+        l_mesh (int): number of evaluation points to compute the time derivatives of equinoctial elements f and g
         oe_min (np.array): minimum values of elements for safe-guarding
         oe_max (np.array): minimum values of elements for safe-guarding
+        tol_oe (np.array or None): tolerance on the equinoctial elements
+        tol_sv (np.array or None): tolerance on the position and velocity vectors
+        tol_q (np.array or None): tolerance on the value of the Lyapunov function
+        abs_tol (float): integrator's absolute tolerance
+        rel_tol (float): integrator's relative tolerance
         nan_angles_threshold (int): number of times to ignore `nan` thrust angles
+        verbosity (int): verbosity level
+        print_frequency (int): frequency at which to print on the terminal
+        convergence_fcn_1 (list or None): check convergence functions for stage 1
+        convergence_fcn_2 (list or None): check convergence functions for stage 2
 
     Attributes:
         print_frequency (int): if verbosity >= 2, prints at this frequency
@@ -66,17 +75,19 @@ class RQLaw:
         t_mesh=20, l_mesh=100,
         oe_min=None, oe_max=None,
         tol_oe=None, tol_sv=None, tol_q=None,
+        abs_tol=1e-7,
+        rel_tol=1e-9,
         nan_angles_threshold=10,
         verbosity=1,
         print_frequency=200,
-        abs_tol=1e-7,
-        rel_tol=1e-9
+        convergence_fcn_1=None,
+        convergence_fcn_2=None
     ):
         """Construct RQLaw object"""
         # dynamics
         self.mu = mu
 
-        # Q-law parameters
+        # RQ-law parameters
         self.rpmin = rpmin
         self.k_petro1 = k_petro1
         self.k_petro2 = k_petro2
@@ -88,11 +99,6 @@ class RQLaw:
         self.r_petro2 = r_petro2
         self.wp1 = wp1
         self.wp2 = wp2
-        self.t_mesh = t_mesh
-        self.l_mesh = l_mesh
-
-        # settings
-        self.verbosity = verbosity
 
         # tolerance for convergence on orbital elements
         if tol_oe is None:
@@ -114,14 +120,14 @@ class RQLaw:
         
         # minimum bounds on elements
         if oe_min is None:
-            self.oe_min = np.array([0.05, -np.inf, -np.inf, -np.inf, -np.inf, -np.inf])
+            self.oe_min = np.array([0.05, -2.0, -2.0, -np.inf, -np.inf, -np.inf])
         else:
             assert len(oe_min)==6, "oe_max must have 6 components" 
             self.oe_min = np.array(oe_min)
 
-        # bounds on elements
+        # maximum bounds on elements
         if oe_max is None:
-            self.oe_max = np.array([1e2, 10.0, 10.0, np.inf, np.inf, np.inf])
+            self.oe_max = np.array([1e2, 2.0, 2.0, np.inf, np.inf, np.inf])
         else:
             assert len(oe_max)==6, "oe_max must have 6 components" 
             self.oe_max = np.array(oe_max)
@@ -129,7 +135,7 @@ class RQLaw:
         # number of times to accept nan angles
         self.nan_angles_threshold = nan_angles_threshold
 
-        # construct element names
+        # RQ-Law dynamics and functions
         self.element_names = ["a", "f", "g", "h", "k", "L"]
         self.eom = eom_mee_with_a_gauss
         fun_lyapunov_control, fun_eval_psi, _, fun_eval_fdot, fun_eval_gdot, fun_eval_dfdoe, fun_eval_dgdoe, fun_eval_q, fun_eval_qdot = symbolic_rqlaw_mee_with_a()
@@ -145,8 +151,8 @@ class RQLaw:
         # Integrator parameters
         self.step_min = 1e-4
         self.step_max = 2.0
-        self.abs_tol = abs_tol # absolute tolerance
-        self.rel_tol = rel_tol # relative tolerance
+        self.abs_tol = abs_tol 
+        self.rel_tol = rel_tol
         self.integrator_str = integrator
         if integrator == "rk4":
             self.integrator = rk4
@@ -156,11 +162,20 @@ class RQLaw:
             self.integrator = dopri5
         else:
             raise ValueError("integrator name invalid!")
+        
+        # Set convergence functions
+        if convergence_fcn_1 == None:
+            self.convergence_fcn_1 = ["oe", "q"]
+        if convergence_fcn_2 == None:
+            self.convergence_fcn_2 = ["oe", "sv"]
 
-        # print frequency
+        # other settings
+        self.verbosity = verbosity
+        self.t_mesh = t_mesh
+        self.l_mesh = l_mesh
         self.print_frequency = print_frequency  
 
-        # checks -> may need to modify/add to these attributes for RQ-Law
+        # checks
         self.ready = False
         self.converge = False
         self.exitcode = 0
@@ -175,29 +190,29 @@ class RQLaw:
         tmax, 
         mdot, 
         tf_max, 
-        t_step=0.001,
+        t_step=0.01,
         mass_min=0.1,
         woe1=None,
         woe2=None,
         wl=0.06609, 
         wscl=3.3697,
-        convergence_fcn_1=None,
-        convergence_fcn_2=None,
         eta_r=0.0,
-        standalone_stage2=True
+        standalone_stage2=False
     ):
         """Set transfer problem
         
         Args:
             oe0 (np.array): chaser's initial state, in Keplerian elements (6 components)
             oeT (np.array): target's initial state, in Keplerian elements (6 components)
-            mass0 (float): initial mass
-            tmax (float): max thrust
-            mdot (float): mass-flow rate
+            mass0 (float): chaser's initial mass
+            tmax (float): chaser's engine max thrust
+            mdot (float): chaser's engine mass-flow rate
             tf_max (float): max time allocated to transfer
             t_step (float): initial time-step size to be used for integration
-            mass_min (float): minimum mass
-            woe (np.array): weight on each osculating element
+            mass_min (float): minimum allowable mass
+            woe (np.array): weight on each osculating element (woe1: stage 1; woe2: stage 2)
+            wl (float): amplitude weight in augmented target semi-major axis (for stage 2)
+            wscl (float): frequency weight in augmented target semi-major axis (for stage 2)
         """
         assert len(oe0)==6, "oe0 must have 6 components"
         assert mass_min >= 1e-2, "mass should be above 0.01 to avoid numerical difficulties"
@@ -225,34 +240,41 @@ class RQLaw:
 
         # time parameters
         self.tf_max = tf_max
-        self.t_step = t_step
+        self.t_step = max(self.step_min, min(self.step_max,t_step))
+
         # spacecraft parameters
-        self.oe0 = oe0
-        self.oeT = oeT 
+        self.oe0 = kep2mee_with_a(np.array(oe0)) 
+        self.oeT = kep2mee_with_a(np.array(oeT)) 
         self.mass0 = mass0
         self.tmax  = tmax
         self.mdot  = mdot
         self.mass_min = mass_min
-        self.ready = True  # toggle
 
         # Record whether to solve stage 2 alone
         self.standalone_stage2 = standalone_stage2
+        if self.standalone_stage2 == True:
+            run = check_convergence_oe(self.oe0, 
+                                        self.oeT, 
+                                        self.woe1, 
+                                        self.wl1, 
+                                        self.tol_oe)
+            assert run==True, "The chaser and target are not already in the same orbit. Run Stage 1."
 
-        # Set convergence functions
-        if convergence_fcn_1 == None:
-            self.convergence_fcn_1 = ["oe", "q"]
-        if convergence_fcn_2 == None:
-            self.convergence_fcn_2 = ["oe", "sv"]
+        self.ready = True  # toggle
         return
 
 
     def solve_stage1(self, weights=[], tune_bounds=[]):
         """Propagate and solve control problem for stage 1 (orbital transfer)
-        ws = wscl = 0
-        eta_r >= 0
+            * ws = wscl = 0
+            * eta_r >= 0
         
         Args:
-            eta_r (float): relative effectivity, `0.0 <= eta_r <= 1.0`
+            weights (list): candidate weights passed as arguments for algorithm tuning on Stage 1
+            tune_bounds (list): bounds on the weights passed as arguments for algorithm tuning on Stage 1
+
+        Returns:
+            (float): Stage 1 time of flight - used for tuning algorithm on Stage 2
         """
         assert self.ready == True, "Please first call `set_problem()`"
 
@@ -260,11 +282,12 @@ class RQLaw:
         if weights != []:
             self.woe1 = weights * tune_bounds
 
-        # initialize values for propagation
+        # initialize values
         t_iter = 0.0
         oe_iter = self.oe0
         oeT_iter = self.oeT
         mass_iter = self.mass0
+        n_nan_angles = 0
 
         # initialize storage
         self.times1 = [t_iter,]
@@ -272,7 +295,6 @@ class RQLaw:
         self.statesT1 = [oeT_iter,]
         self.masses1 = [mass_iter,]
         self.controls1 = []
-        n_nan_angles = 0
 
         if self.verbosity >= 2:
             header = "Stage 1:   iter |  time      |  del1       |  del2       |  del3       |  del4       |  del5       |"
@@ -355,12 +377,13 @@ class RQLaw:
             ode_params = (self.mu, u, psi[0], psi[1], psi[2])
             psiT = self.psi_fun(self.mu, oeT_iter)
             ode_paramsT = (self.mu, np.zeros((3,)), psiT[0], psiT[1], psiT[2])
-            h_next, oe_iter, oeT_iter = integrate_next_step(self.integrator, self.eom, 
-                                                                t_iter, self.t_step, 
-                                                                oe_iter, oeT_iter, 
-                                                                ode_params, ode_paramsT, 
-                                                                self.abs_tol, self.rel_tol, 
-                                                            )
+            h_next, oe_iter, oeT_iter = integrate_next_step(
+                                                        self.integrator, self.eom, 
+                                                        t_iter, self.t_step, 
+                                                        oe_iter, oeT_iter, 
+                                                        ode_params, ode_paramsT, 
+                                                        self.abs_tol, self.rel_tol, 
+                                                    )
             t_iter += self.t_step  # update time
             mass_iter -= self.mdot*self.t_step*throttle
             self.t_step = max(self.step_min, min(self.step_max,h_next))
@@ -420,23 +443,25 @@ class RQLaw:
         else:
             if self.verbosity > 0:
                 print("Target elements successfully reached!")
-        return t_iter
+        return t_iter # for tuning
 
     
     def evaluate_osculating_qdot(self, t0, oe, oeT, accel_thrust):
-        """Evaluate Qdot over the entire orbit. For stage 1 only (since eta_r is set to 0 in stage 2).
+        """Evaluate Qdot over the entire orbit. 
+        For stage 1 only (since eta_r is set to 0 in stage 2).
         
         Args:
             t0 (float): current time
             oe (np.array): chaser's current osculating elements
             oeT (np.array): target's current osculating elements
-            accel_thrust (float): magnitude of thrust acceleration at t0, tmax/mass
+            accel_thrust (float): magnitude of thrust acceleration at t0
 
         Returns:
             (tuple): min and max Qdot
         """
         # Period of osculating orbit
         T = 2*np.pi*np.sqrt(oe[0]**3/self.mu)
+
         # points in time where to evaluate qdot
         eval_pts = np.linspace(t0, t0+T, self.t_mesh+1)
         qdot_list = []
@@ -450,15 +475,15 @@ class RQLaw:
                 ode_params = (self.mu, np.zeros((3,)), psi[0], psi[1], psi[2])
                 psiT = self.psi_fun(self.mu, oeT_iter)
                 ode_paramsT = (self.mu, np.zeros((3,)), psiT[0], psiT[1], psiT[2])
-
-                h_next, oe_iter, oeT_iter = integrate_next_step(self.integrator, self.eom, 
-                                                                t, self.t_step, 
-                                                                oe_iter, oeT_iter, 
-                                                                ode_params, ode_paramsT, 
-                                                                self.abs_tol, self.rel_tol, 
-                                                            )
+                h_next, oe_iter, oeT_iter = integrate_next_step(
+                                                            self.integrator, self.eom, 
+                                                            t, self.t_step, 
+                                                            oe_iter, oeT_iter, 
+                                                            ode_params, ode_paramsT, 
+                                                            self.abs_tol, self.rel_tol, 
+                                                        )
                 t += self.t_step  # update time
-                self.t_step = max(self.step_min, min(self.step_max,h_next))
+                self.t_step = max(self.step_min, min(self.step_max, h_next))
             oe_test = oe_iter
             oeT_test = oeT_iter   
 
@@ -503,29 +528,32 @@ class RQLaw:
             qdot_list.append(qdot_test)
         return min(qdot_list), max(qdot_list)
 
-    def check_doe_stage2(self):
-        return check_convergence_oe(self.oe0, self.oeT, self.woe2, self.wl2, self.tol_oe)
 
     def solve_stage2(self, weights=[], tune_bounds=[]):
         """Propagate and solve control problem for stage 2 (phasing)
-        ws, wscl > 0
-        eta_r = 0
+            * ws, wscl > 0
+            * eta_r = 0
         
         Args:
-            eta_r (float): relative effectivity, `0.0 <= eta_r <= 1.0`
+            weights (list): candidate weights passed as arguments for algorithm tuning on Stage 2
+            tune_bounds (list): bounds on the weights passed as arguments for algorithm tuning on Stage 2
+
+        Returns:
+            (float): Stage 2 time of flight - used for tuning algorithm on Stage 2
         """
         assert self.ready == True, "Please first call `set_problem()`"
 
         # For tuning
         if weights != []:
-            self.exitcode = 0
             self.woe2 = weights[:5] * tune_bounds[:5]
             self.wl2 = weights[5] * tune_bounds[5] 
             self.wscl2 = weights[6] * tune_bounds[6] 
 
+        # Reset convergence check to False
         self.converge = False
 
-        # initialize values for propagation
+        # initialize values
+        n_nan_angles = 0
         if self.standalone_stage2 == True:
             t_iter = 0.0
             oe_iter = self.oe0
@@ -538,7 +566,6 @@ class RQLaw:
             mass_iter = self.masses[-1]
 
         # initialize storage
-        n_nan_angles = 0
         self.states2 = [oe_iter,]
         self.statesT2 = [oeT_iter,]
         self.times2 = [t_iter,]
@@ -612,12 +639,13 @@ class RQLaw:
             ode_params = (self.mu, u, psi[0], psi[1], psi[2])
             psiT = self.psi_fun(self.mu, oeT_iter)
             ode_paramsT = (self.mu, np.zeros((3,)), psiT[0], psiT[1], psiT[2])
-            h_next, oe_iter, oeT_iter = integrate_next_step(self.integrator, self.eom, 
-                                                                t_iter, self.t_step, 
-                                                                oe_iter, oeT_iter, 
-                                                                ode_params, ode_paramsT, 
-                                                                self.abs_tol, self.rel_tol, 
-                                                            )
+            h_next, oe_iter, oeT_iter = integrate_next_step(
+                                                        self.integrator, self.eom, 
+                                                        t_iter, self.t_step, 
+                                                        oe_iter, oeT_iter, 
+                                                        ode_params, ode_paramsT, 
+                                                        self.abs_tol, self.rel_tol, 
+                                                    )
             t_iter += self.t_step  # update time
             mass_iter -= self.mdot*self.t_step*throttle
             self.t_step = max(self.step_min, min(self.step_max,h_next))
@@ -684,15 +712,22 @@ class RQLaw:
         else:
             if self.verbosity > 0:
                 print("Target elements successfully reached!")
-        return t_iter
+        return t_iter # for tuning
+
 
     def eval_deltaL(self, l, lT):
-        """Bring l - lT from [-2pi, 2pi) to [-pi,pi)"""
+        """Bring l - lT from [-2pi, 2pi) to [-pi,pi)
+        
+        Args:
+            l (float): chaser's true longitude
+            lT (float): target's true longitude
+        """
         # Bring l and lT back to [0,2pi] -> l-lT in [-2pi, 2pi)
         l = l%(2*np.pi)
         lT = lT%(2*np.pi)
         # Bring l-lT in [-pi,pi)
         return (l - lT)/2
+
 
     def plot_elements_history(self, figsize=(6,4), to_keplerian=False, 
                                     time_scale=1, distance_scale=1, 
@@ -704,14 +739,17 @@ class RQLaw:
             states = self.states
             statesT = self.statesT
             times = np.array(self.times) * time_scale
+            title = "Combined Stage 1 and Stage 2 states"
         elif to_plot == 1:
             states = self.states1
             statesT = self.statesT1
             times = np.array(self.times1) * time_scale
+            title = "Stage 1 states"
         else: 
             states = self.states2
             statesT = self.statesT2
             times = np.array(self.times2) * time_scale
+            title = "Stage 2 states"
         oes = np.zeros((6,len(times)))
         oesT = np.zeros((6,len(times)))
         if to_keplerian:
@@ -747,6 +785,7 @@ class RQLaw:
                 oesT[:,idx] = statesT[idx]
                 
         fig, axs = plt.subplots(3,2,figsize=figsize)
+        fig.suptitle(title)
         i = 0
         j = 0
         for idx in range(6):
@@ -764,9 +803,11 @@ class RQLaw:
         if to_plot == 0:
             controls = self.controls
             times = np.array(self.times)[0:-1] * time_scale
+            title = "Combined Stage 1 and Stage 2 controls"
         elif to_plot == 1:
             controls = self.controls1
             times = np.array(self.times1)[0:-1] * time_scale
+            title = "Stage 1 controls"
         else: 
             if self.standalone_stage2 == True:
                 controls = self.controls2
@@ -774,6 +815,7 @@ class RQLaw:
             else:
                 controls = self.controls2
                 times = np.array(self.times2) * time_scale
+            title = "Stage 2 controls"
         alphas, betas, throttles = [], [], []
         for ctl in controls:
             alphas.append(ctl[0])
@@ -783,6 +825,7 @@ class RQLaw:
         if time_unit != None:
             time_label += " ["+time_unit+"]"
         fig, axs = plt.subplots(3,1,figsize=figsize)
+        fig.suptitle(title)
         axs[0].plot(times, np.array(alphas)*180/np.pi, marker='o', markersize=2)
         axs[1].plot(times, np.array(betas)*180/np.pi,  marker='o', markersize=2)
         axs[2].plot(times, np.array(throttles)*100,  marker='o', markersize=2)
@@ -826,42 +869,6 @@ class RQLaw:
         return cart
 
 
-    def plot_trajectory_2d(
-        self, 
-        figsize=(6,6),
-        interpolate=True, 
-        steps=None,
-        to_plot=0
-    ):
-        """Plot trajectory in xy-plane"""
-        assert to_plot in [0,1,2], "to_plot must be 0, 1, or 2"
-        if to_plot == 0:
-            states = self.states
-            times = self.times
-        elif to_plot == 1:
-            states = self.states1
-            times = self.times1
-        else: 
-            states = self.states2
-            times = self.times2
-        # get cartesian history
-        cart = self.get_cartesian_history(states, times, interpolate, steps)
-
-        fig, ax = plt.subplots(1,1,figsize=figsize)
-        # plot initial and final orbit
-        coord_orb0 = get_orbit_coordinates(mee_with_a2kep(self.oe0), self.mu)
-        coord_orbT = get_orbit_coordinates(mee_with_a2kep(self.oeT), self.mu)
-        ax.plot(coord_orb0[0,:], coord_orb0[1,:], label="Initial", c="darkblue")
-        ax.plot(coord_orbT[0,:], coord_orbT[1,:], label="Final", c="forestgreen")
-
-        # plot transfer
-        ax.plot(cart[0,:], cart[1,:], label="transfer", c="crimson", lw=0.4)
-        ax.scatter(cart[0,0], cart[1,0], label=None, c="crimson", marker="x")
-        ax.scatter(cart[0,-1], cart[1,-1], label=None, c="crimson", marker="o")
-        ax.set_aspect('equal')
-        return fig, ax
-
-
     def plot_trajectory_3d(
         self, 
         figsize=(6,6), 
@@ -878,19 +885,23 @@ class RQLaw:
             states = self.states
             statesT = self.statesT
             times = self.times
+            title = "Combined Stage 1 and Stage 2 trajectory"
         elif to_plot == 1:
             states = self.states1
             statesT = self.statesT1
             times = self.times1
+            title = "Stage 1 trajectory"
         else: 
             states = self.states2
             statesT = self.statesT2
             times = self.times2
+            title = "Stage 2 trajectory"
         # get cartesian history
         cart = self.get_cartesian_history(states, times, interpolate, steps)
 
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(projection='3d')
+        fig.suptitle(title)
 
         # plot center body
         if plot_sphere:
