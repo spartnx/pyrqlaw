@@ -1,5 +1,5 @@
 # pyrqlaw
-RQ-law feedback control for low-thrust orbital transfer and rendezvous in Python. Adapted from [pyqlaw](https://github.com/Yuricst/pyqlaw) by [Yuricst](https://github.com/Yuricst). Utility functions are available to tune the RQ-Law algorithm in cases when it cannot converge.
+Python implementation of the RQ-law feedback control for low-thrust orbital transfer and rendezvous developed by Narayanaswamy & Damaren [4]. Adapted from [pyqlaw](https://github.com/Yuricst/pyqlaw), a version of the Q-Law algorithm implemented in Python by [Yuricst](https://github.com/Yuricst). Utility functions are available to tune the RQ-Law algorithm in cases when it cannot converge. 
 
 ### Dependencies
 
@@ -108,7 +108,7 @@ Stage 2 Keplerian elements (blue = chaser's; red = target's)
   <img src="./plots//rendezvous_with_coasting//Elements history (stage 2).png" width="400" title="transfer">
 </p>
 
-Stage 2 trajectory (note that the yellow nad black dots are at the same location)
+Stage 2 trajectory (note that the yellow and black dots are at the same location)
 <p align="center">
   <img src="./plots//rendezvous_with_coasting//Trajectory (stage 2).png" width="400" title="transfer">
 </p>
